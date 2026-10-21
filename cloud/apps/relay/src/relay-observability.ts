@@ -6,6 +6,7 @@ import type { CellInventoryHoldCounts } from './cell-inventory-hold-samples.js'
 import type { PostgresPoolPressureCounts } from './postgres-pool-pressure.js'
 import type { RelayReadinessGraceEvent, RelayReadinessObservation } from './relay-readiness.js'
 import { RELAY_FIX_LEVEL } from './relay-fix-level.js'
+import type { StickySlotSample } from './sticky-slot-statements.js'
 
 export type RelayRuntimeCounts = {
   totalConnections: number
@@ -17,6 +18,8 @@ export type RelayRuntimeCounts = {
   splices: number
   pendingSplices: number
   queuedBytes: number
+  // Step 6: resume audit rows a memory cell dropped since boot; the watcher pages on any.
+  resumeAuditDropped?: number
 }
 
 export function observedRelayRequests(counts: RelayRuntimeCounts): number {
@@ -90,6 +93,7 @@ export interface RelayRuntimeObserver {
   recordAssignmentRejectionReason?(lane: AssignmentAdmissionLane, reason: string): void
   recordDrainReturnRetryAfter?(seconds: number): void
   recordAdmissionServiceMs?(lane: 'sticky' | 'drain-return', durationMs: number): void
+  recordStickySlot?(sample: StickySlotSample): void
   recordAssignmentUnavailable?(cause: AssignmentUnavailableCause): void
   recordDatabaseLockWaitSample?(sample: DatabaseLockWaitSample): void
   recordRegionRequest?(region: RelayRegion | undefined): void
@@ -99,9 +103,16 @@ export interface RelayRuntimeObserver {
     fallback: boolean
   }): void
   recordControlClose?(code: number): void
+  recordPostProofClose?(reason: string): void
   recordSpliceClose?(trigger: string): void
   recordClientAcceptAbandoned?(stage: RelayClientAcceptStage, elapsedMs: number): void
   recordClientAcceptCompleted?(sample: RelayClientAcceptSample): void
+  // Step 6: every phone refusal by close code, and the phone-path failures the watcher reads.
+  recordPhoneRejection?(code: number): void
+  recordPhoneAttachDeadline?(): void
+  recordPhoneAcceptDatabaseError?(): void
+  recordResumeConfirmFailure?(code: string): void
+  recordResumeRenewalFailure?(): void
   recordControlRtt?(rttMs: number): void
   recordHostPreAuth?(path: HostPreAuthPath, outcome: HostPreAuthOutcome, durationMs: number): void
 }
@@ -160,6 +171,7 @@ export const RELAY_CLIENT_ACCEPT_TIMED_STAGES = [
 export type RelayClientAcceptSample = {
   totalMs: number
   stageMs: Record<RelayClientAcceptTimedStage, number>
+  phonePath?: 'db' | 'memory'
 }
 
 type RelayMetricDeltas = {
@@ -184,6 +196,12 @@ type RelayMetricDeltas = {
   drainReturnRetryAfterSecondsSum: number
   drainReturnServiceMs: number[]
   stickyServiceMs: number[]
+  stickySlotQueueWaitMs: number[]
+  stickySlotPoolWaitMs: number[]
+  stickySlotSqlMs: number[]
+  stickySlotStatements: number[]
+  stickySlotByConnection: Map<number, StickyConnectionStatements>
+  stickySlotConnectionSamplesDropped: number
   assign503sByCause: Record<string, number>
   dbLockWaitSamples: number
   dbLockWaitersByKey: Record<string, number>
@@ -192,11 +210,18 @@ type RelayMetricDeltas = {
   regionFallbacks: Record<string, number>
   unavailableRegions: Record<string, number>
   controlClosesByCode: Record<string, number>
+  postProofClosesByReason: Record<string, number>
   spliceClosesByTrigger: Record<string, number>
   clientAcceptsAbandonedByStage: Record<string, number>
   clientAcceptAbandonedMsMax: number
   clientAcceptTotalsMs: number[]
   clientAcceptStageSamplesMs: Record<RelayClientAcceptTimedStage, number[]>
+  clientAcceptsByPhonePath: Record<string, number>
+  phoneRejectionsByCode: Record<string, number>
+  phoneAttachDeadlines: number
+  phoneAcceptDatabaseErrors: number
+  resumeConfirmFailuresByCode: Record<string, number>
+  resumeRenewalFailures: number
   controlRttSamplesMs: number[]
   controlRttObserved: number
   controlRenewalLatenciesMs: number[]
@@ -208,6 +233,18 @@ type RelayMetricDeltas = {
   hostHellosShed: number
   preAuthLatency: PreAuthLatency
 }
+
+type StickyConnectionStatements = {
+  requests: number
+  statements: number
+  maxMs: number
+  samplesMs: number[]
+}
+
+// A window sees each pooled connection the sticky lane used; a pool that keeps
+// replacing connections must not grow the line without bound.
+export const STICKY_CONNECTION_LIMIT = 64
+export const STICKY_STATEMENT_RESERVOIR_LIMIT = 1024
 
 // A host chooses how often it answers a ping, so the process-wide window is a
 // reservoir: the heap cost of a flood is capped and the percentiles stay unbiased.
@@ -254,6 +291,12 @@ const emptyDeltas = (): RelayMetricDeltas => ({
   drainReturnRetryAfterSecondsSum: 0,
   drainReturnServiceMs: [],
   stickyServiceMs: [],
+  stickySlotQueueWaitMs: [],
+  stickySlotPoolWaitMs: [],
+  stickySlotSqlMs: [],
+  stickySlotStatements: [],
+  stickySlotByConnection: new Map(),
+  stickySlotConnectionSamplesDropped: 0,
   assign503sByCause: {},
   dbLockWaitSamples: 0,
   dbLockWaitersByKey: {},
@@ -262,6 +305,7 @@ const emptyDeltas = (): RelayMetricDeltas => ({
   regionFallbacks: {},
   unavailableRegions: {},
   controlClosesByCode: {},
+  postProofClosesByReason: {},
   spliceClosesByTrigger: {},
   clientAcceptsAbandonedByStage: {},
   clientAcceptAbandonedMsMax: 0,
@@ -273,6 +317,12 @@ const emptyDeltas = (): RelayMetricDeltas => ({
     attach: [],
     basis: []
   },
+  clientAcceptsByPhonePath: {},
+  phoneRejectionsByCode: {},
+  phoneAttachDeadlines: 0,
+  phoneAcceptDatabaseErrors: 0,
+  resumeConfirmFailuresByCode: {},
+  resumeRenewalFailures: 0,
   controlRttSamplesMs: [],
   controlRttObserved: 0,
   controlRenewalLatenciesMs: [],
@@ -392,6 +442,36 @@ export class RelayObservability implements RelayRuntimeObserver {
     else this.deltas.drainReturnServiceMs.push(durationMs)
   }
 
+  recordStickySlot(sample: StickySlotSample): void {
+    const deltas = this.deltas
+    deltas.stickySlotQueueWaitMs.push(sample.queueWaitMs)
+    deltas.stickySlotPoolWaitMs.push(sample.poolWaitMs)
+    deltas.stickySlotSqlMs.push(sample.sqlMs)
+    deltas.stickySlotStatements.push(sample.statements)
+    for (const [connectionId, samplesMs] of sample.statementMsByConnection) {
+      let connection = deltas.stickySlotByConnection.get(connectionId)
+      if (!connection) {
+        if (deltas.stickySlotByConnection.size >= STICKY_CONNECTION_LIMIT) {
+          deltas.stickySlotConnectionSamplesDropped++
+          continue
+        }
+        connection = { requests: 0, statements: 0, maxMs: 0, samplesMs: [] }
+        deltas.stickySlotByConnection.set(connectionId, connection)
+      }
+      connection.requests++
+      for (const durationMs of samplesMs) {
+        const observedBefore = connection.statements++
+        connection.maxMs = Math.max(connection.maxMs, durationMs)
+        keepInReservoir(
+          connection.samplesMs,
+          observedBefore,
+          durationMs,
+          STICKY_STATEMENT_RESERVOIR_LIMIT
+        )
+      }
+    }
+  }
+
   recordAssignmentUnavailable(cause: AssignmentUnavailableCause): void {
     increment(this.deltas.assign503sByCause, cause)
   }
@@ -473,6 +553,10 @@ export class RelayObservability implements RelayRuntimeObserver {
     this.deltas.controlClosesByCode[key] = (this.deltas.controlClosesByCode[key] ?? 0) + 1
   }
 
+  recordPostProofClose(reason: string): void {
+    increment(this.deltas.postProofClosesByReason, reason)
+  }
+
   recordSpliceClose(trigger: string): void {
     this.deltas.spliceClosesByTrigger[trigger] =
       (this.deltas.spliceClosesByTrigger[trigger] ?? 0) + 1
@@ -487,10 +571,31 @@ export class RelayObservability implements RelayRuntimeObserver {
   }
 
   recordClientAcceptCompleted(sample: RelayClientAcceptSample): void {
+    if (sample.phonePath) increment(this.deltas.clientAcceptsByPhonePath, sample.phonePath)
     this.deltas.clientAcceptTotalsMs.push(sample.totalMs)
     for (const stage of RELAY_CLIENT_ACCEPT_TIMED_STAGES) {
       this.deltas.clientAcceptStageSamplesMs[stage].push(sample.stageMs[stage])
     }
+  }
+
+  recordPhoneRejection(code: number): void {
+    increment(this.deltas.phoneRejectionsByCode, String(code))
+  }
+
+  recordPhoneAttachDeadline(): void {
+    this.deltas.phoneAttachDeadlines += 1
+  }
+
+  recordPhoneAcceptDatabaseError(): void {
+    this.deltas.phoneAcceptDatabaseErrors += 1
+  }
+
+  recordResumeConfirmFailure(code: string): void {
+    increment(this.deltas.resumeConfirmFailuresByCode, code)
+  }
+
+  recordResumeRenewalFailure(): void {
+    this.deltas.resumeRenewalFailures += 1
   }
 
   recordControlRtt(rttMs: number): void {
@@ -596,6 +701,7 @@ export class RelayObservability implements RelayRuntimeObserver {
             stickyServiceMsP50: roundMs(percentile(deltas.stickyServiceMs, 0.5)),
             stickyServiceMsP99: roundMs(percentile(deltas.stickyServiceMs, 0.99))
           }),
+      ...stickySlotFields(deltas),
       assign503sByCauseDelta: deltas.assign503sByCause,
       assignNonDrain503sDelta: Object.entries(deltas.assign503sByCause)
         .filter(([cause]) => cause !== 'drain-return-deferred')
@@ -613,10 +719,19 @@ export class RelayObservability implements RelayRuntimeObserver {
       regionFallbacksDelta: deltas.regionFallbacks,
       unavailableRegionsDelta: deltas.unavailableRegions,
       controlClosesByCodeDelta: deltas.controlClosesByCode,
+      // Closes after a host proof but before its control was wired; none is in the line above.
+      postProofClosesByReasonDelta: deltas.postProofClosesByReason,
       spliceClosesByTriggerDelta: deltas.spliceClosesByTrigger,
       clientAcceptsAbandonedByStageDelta: deltas.clientAcceptsAbandonedByStage,
       clientAcceptAbandonedMsMax: roundMs(deltas.clientAcceptAbandonedMsMax),
       clientAcceptCompletedDelta: deltas.clientAcceptTotalsMs.length,
+      clientAcceptsByPhonePathDelta: deltas.clientAcceptsByPhonePath,
+      // Phone refusals by close code; attach deadlines are the 4404s sent with the control still up.
+      phoneRejectionsByCodeDelta: deltas.phoneRejectionsByCode,
+      phoneAttachDeadlinesDelta: deltas.phoneAttachDeadlines,
+      phoneAcceptDatabaseErrorsDelta: deltas.phoneAcceptDatabaseErrors,
+      resumeConfirmFailuresByCodeDelta: deltas.resumeConfirmFailuresByCode,
+      resumeRenewalFailuresDelta: deltas.resumeRenewalFailures,
       // Accepts are sparse: publishing a zero percentile for every empty window
       // would pin the p50 at 0 forever and collapse the p95 at low accept rates.
       ...(deltas.clientAcceptTotalsMs.length === 0
@@ -715,6 +830,42 @@ function preAuthLatencyFields(
     beforeCheck: byOutcome(latency.beforeCheck),
     db: byOutcome(latency.db),
     reserve: byOutcome(latency.reserve)
+  }
+}
+
+// What the sticky slot spent its hold on: the queue before it, then pool waits and
+// round trips inside it; per connection, whether one slow connection keeps serving it.
+function stickySlotFields(deltas: RelayMetricDeltas): Record<string, unknown> {
+  if (deltas.stickySlotQueueWaitMs.length === 0) return {}
+  const queueWait = latencySummary(deltas.stickySlotQueueWaitMs)
+  const poolWait = latencySummary(deltas.stickySlotPoolWaitMs)
+  const sql = latencySummary(deltas.stickySlotSqlMs)
+  const statements = latencySummary(deltas.stickySlotStatements)
+  const byConnection: Record<string, Record<string, number>> = {}
+  for (const [connectionId, connection] of deltas.stickySlotByConnection) {
+    const { p50, p99 } = latencySummary(connection.samplesMs)
+    byConnection[String(connectionId)] = {
+      requests: connection.requests,
+      statements: connection.statements,
+      statementMsP50: p50,
+      statementMsP99: p99,
+      statementMsMax: roundMs(connection.maxMs)
+    }
+  }
+  return {
+    stickySlotsDelta: deltas.stickySlotQueueWaitMs.length,
+    stickyQueueWaitMsP50: queueWait.p50,
+    stickyQueueWaitMsP99: queueWait.p99,
+    stickyQueueWaitMsMax: queueWait.max,
+    stickyPoolWaitMsP50: poolWait.p50,
+    stickyPoolWaitMsP99: poolWait.p99,
+    stickySqlMsP50: sql.p50,
+    stickySqlMsP99: sql.p99,
+    stickyStatementsP50: statements.p50,
+    stickyStatementsMax: statements.max,
+    stickySqlByConnection: byConnection,
+    // One per request-connection pair that found the window's table full.
+    stickySqlConnectionSamplesDroppedDelta: deltas.stickySlotConnectionSamplesDropped
   }
 }
 

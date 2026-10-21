@@ -24,12 +24,11 @@ export function useTerminalPaneContextActions(controller: TerminalPaneCloseContr
     paneTitlesRef,
     paneTransportsRef,
     resolveContextMenuFileLinkRef,
-    persistLayoutSnapshot,
     quickCommandGroupId,
     quickCommandRepoId,
     projectHostSetupProjection,
     removePaneTitle,
-    removedTitleLeafIdsRef,
+    changePaneTitle,
     renameBlurCommitEnabledRef,
     renameEnableBlurFrameRef,
     renameFocusFrameRef,
@@ -43,7 +42,6 @@ export function useTerminalPaneContextActions(controller: TerminalPaneCloseContr
     rightClickToPaste,
     setAgentSessionContinuation,
     setAgentSessionFork,
-    setPaneTitles,
     setRenamingPaneId,
     setTerminalError,
     tabId,
@@ -65,17 +63,11 @@ export function useTerminalPaneContextActions(controller: TerminalPaneCloseContr
       setRenamingPaneId(null)
       return
     }
-    setPaneTitles((previous) => ({ ...previous, [renamingPaneId]: trimmed }))
-    paneTitlesRef.current = { ...paneTitlesRef.current, [renamingPaneId]: trimmed }
-    const leafId = managerRef.current?.getPanes().find((pane) => pane.id === renamingPaneId)?.leafId
-    if (leafId) {
-      removedTitleLeafIdsRef.current.delete(leafId)
-    }
     closeRenameSession()
     setRenamingPaneId(null)
-    persistLayoutSnapshot('gesture')
+    changePaneTitle(renamingPaneId, trimmed)
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- Preserve the pre-split dependency contract.
-  }, [closeRenameSession, renamingPaneId, renameValue, removePaneTitle, persistLayoutSnapshot])
+  }, [closeRenameSession, renamingPaneId, renameValue, removePaneTitle, changePaneTitle])
   const handleRenameCancel = useCallback(() => {
     renameSubmittedRef.current = true
     closeRenameSession()

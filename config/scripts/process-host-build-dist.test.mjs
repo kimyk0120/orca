@@ -54,6 +54,7 @@ function fixture(onTestFinished, distSeed) {
     JSON.stringify({
       compilerOptions: {
         target: 'ES2022',
+        lib: ['ES2022'],
         module: 'Node16',
         moduleResolution: 'Node16',
         rootDir: 'src',
@@ -163,8 +164,7 @@ afterAll(() => releaseSeed?.())
 
 describe('process-host dist build', () => {
   it('leaves an up-to-date dist untouched on repeated builds', async () => {
-    const packageDir = fixture()
-    await build(packageDir)
+    const packageDir = fixture(undefined, seededDist)
     const before = distSnapshot(packageDir)
 
     const repeated = await build(packageDir)

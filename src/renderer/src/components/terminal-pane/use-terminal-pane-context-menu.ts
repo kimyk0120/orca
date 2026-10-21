@@ -23,6 +23,7 @@ import { useAppStore } from '@/store'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { resolvePaneAgentSessionId } from './pane-agent-session-id'
 import { resetTerminalInputModes } from './terminal-input-mode-reset'
+import { equalizeTerminalPanes } from './terminal-pane-layout-owner-commands'
 import { buildTerminalPaneContextMenuReveal } from './terminal-pane-context-menu-reveal'
 import type {
   TerminalMenuState,
@@ -88,6 +89,7 @@ export function useTerminalPaneContextMenu({
     menuOpenedAtRef,
     contextMenuFilePathRef,
     onContextMenuCapture,
+    onMouseDownCapture,
     onPaneTitleContextMenu
   } = useTerminalContextMenuTrigger({
     managerRef,
@@ -154,8 +156,9 @@ export function useTerminalPaneContextMenu({
     if (!pane || !manager) {
       return
     }
-    manager.equalizePaneSizes()
-    pane.terminal.focus()
+    equalizeTerminalPanes({ worktreeId, tabId, getManager: () => managerRef.current }, () =>
+      pane.terminal.focus()
+    )
   }
 
   const onClosePane = (): void => {
@@ -264,6 +267,7 @@ export function useTerminalPaneContextMenu({
     paneCount,
     menuPaneId,
     onContextMenuCapture,
+    onMouseDownCapture,
     onPaneTitleContextMenu,
     onCopy,
     onSelectAll,
