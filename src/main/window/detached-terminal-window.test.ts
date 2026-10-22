@@ -69,9 +69,9 @@ const { BrowserWindowMock, instances, sendToTrustedUIRendererMock } = vi.hoisted
 
 vi.mock('electron', () => ({
   BrowserWindow: BrowserWindowMock,
+  app: { isPackaged: true },
   nativeTheme: { shouldUseDarkColors: false }
 }))
-vi.mock('@electron-toolkit/utils', () => ({ is: { dev: false } }))
 vi.mock('../ipc/ui', () => ({ sendToTrustedUIRenderer: sendToTrustedUIRendererMock }))
 vi.mock('./foreground-activation-policy', () => ({
   isBackgroundLaunch: () => false,

@@ -1,5 +1,4 @@
-import { BrowserWindow, nativeTheme } from 'electron'
-import { is } from '@electron-toolkit/utils'
+import { app, BrowserWindow, nativeTheme } from 'electron'
 import { join } from 'node:path'
 import { sendToTrustedUIRenderer } from '../ipc/ui'
 import { isBackgroundLaunch, showWindowWithoutStealingFocus } from './foreground-activation-policy'
@@ -20,7 +19,7 @@ const entriesByTabId = new Map<string, DetachedTerminalEntry>()
 
 function loadDetachedTerminalWindow(window: BrowserWindow, args: DetachedTerminalWindowArgs): void {
   const query = { surface: 'terminal', ...args }
-  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
+  if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
     const params = new URLSearchParams(query)
     void window.loadURL(`${process.env.ELECTRON_RENDERER_URL}/popout.html?${params.toString()}`)
     return
