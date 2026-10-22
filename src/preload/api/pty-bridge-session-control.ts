@@ -29,7 +29,6 @@ export const ptySessionControlApi = {
     cols: number
     rows: number
     cwd?: string
-    cwdFallback?: 'worktree'
     env?: Record<string, string>
     envToDelete?: string[]
     command?: string
@@ -121,6 +120,9 @@ export const ptySessionControlApi = {
   },
   ackColdRestore: (id: string): void => {
     ipcRenderer.send('pty:ackColdRestore', { id })
+  },
+  ackHiddenOutputRestoreApplied: (id: string, hiddenDropEpisode?: number): void => {
+    ipcRenderer.send('pty:hiddenOutputRestoreApplied', { id, hiddenDropEpisode })
   },
   ackData: (id: string, charCount: number, processedChars?: number): void => {
     ipcRenderer.send('pty:ackData', {

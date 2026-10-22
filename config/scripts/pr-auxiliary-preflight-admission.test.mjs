@@ -239,19 +239,27 @@ describe('Mobile CI tool preflight routing', () => {
     expect(evaluate(required.env.PREFLIGHT_SHOULD_RUN, context)).toBe(true)
   })
 
-  it('keeps workflow-only changes on their original skipped root route', () => {
+  // Static analysis only, for the whole-tree formatting check.
+  it('keeps workflow-only changes off the root unit and typecheck route', () => {
     const outputs = routedOutputs(['.github/workflows/mobile.yml'], 'false', verified)
     expect(outputs.mobile_ci_tools).toBe('false')
     expect(outputs.test).toBe('false')
-    expect(outputs.static_analysis).toBe('false')
+    expect(outputs.static_analysis).toBe('true')
     expect(outputs.typecheck).toBe('false')
-    expect(evaluate(workflow.jobs.preflight.if, { needs: { code_paths: { outputs } } })).toBe(false)
   })
 
   it('keeps root shard execution enabled for callers that do not opt out', () => {
     expect(unit.on.workflow_call.inputs.run_shards.default).toBe(true)
     expect(evaluate(unit.jobs.test.if, { inputs: { run_shards: true } })).toBe(true)
-    expect(unit.jobs.relay_integration.if).toBeUndefined()
+    const relayDefault = unit.on.workflow_call.inputs.run_relay_integration.default
+    expect(relayDefault).toBe(true)
+    expect(
+      evaluate(unit.jobs.relay_integration.if, { inputs: { run_relay_integration: relayDefault } })
+    ).toBe(true)
+    expect(
+      evaluate(unit.jobs.relay_integration.if, { inputs: { run_relay_integration: false } })
+    ).toBe(false)
+    expect(workflow.jobs.test.with.run_relay_integration).toBeUndefined()
     expect(unit.jobs.relay_integration.needs).toBeUndefined()
   })
 

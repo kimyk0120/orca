@@ -8,6 +8,7 @@ import {
   PRE_AUTH_RESERVOIR_LIMIT,
   percentile,
   RelayObservability,
+  STICKY_CONNECTION_LIMIT,
   type RelayProcessCounts
 } from './relay-observability.js'
 import { RELAY_FIX_LEVEL } from './relay-fix-level.js'
@@ -284,6 +285,75 @@ describe('relay observability', () => {
     expect(entries[1]).not.toHaveProperty('drainReturnServiceMsP50')
   })
 
+  it('summarises sticky slots per window and per pooled connection', () => {
+    const entries: Array<Record<string, unknown>> = []
+    const observability = new RelayObservability(
+      { role: 'director', cellId: 'director', region: 'us-central1' },
+      (entry) => entries.push(entry)
+    )
+    for (let ms = 1; ms <= 100; ms++) {
+      observability.recordStickySlot({
+        queueWaitMs: ms * 20,
+        poolWaitMs: ms,
+        sqlMs: ms * 2,
+        statements: 14,
+        // The slow connection serves every other request.
+        statementMsByConnection: new Map([ms % 2 === 0 ? [1, [300]] : [2, [5, 6]]])
+      })
+    }
+    observability.flush(counts)
+    observability.flush(counts)
+
+    expect(entries[0]).toMatchObject({
+      stickySlotsDelta: 100,
+      stickyQueueWaitMsP50: 1_000,
+      stickyQueueWaitMsP99: 1_980,
+      stickyQueueWaitMsMax: 2_000,
+      stickyPoolWaitMsP50: 50,
+      stickyPoolWaitMsP99: 99,
+      stickySqlMsP50: 100,
+      stickySqlMsP99: 198,
+      stickyStatementsP50: 14,
+      stickyStatementsMax: 14,
+      stickySqlByConnection: {
+        '1': {
+          requests: 50,
+          statements: 50,
+          statementMsP50: 300,
+          statementMsP99: 300,
+          statementMsMax: 300
+        },
+        '2': { requests: 50, statements: 100, statementMsP50: 5, statementMsP99: 6 }
+      },
+      stickySqlConnectionSamplesDroppedDelta: 0
+    })
+    expect(entries[1]).not.toHaveProperty('stickySlotsDelta')
+    expect(entries[1]).not.toHaveProperty('stickySqlByConnection')
+  })
+
+  it('bounds the per-connection sticky summary', () => {
+    const entries: Array<Record<string, unknown>> = []
+    const observability = new RelayObservability(
+      { role: 'director', cellId: 'director', region: 'us-central1' },
+      (entry) => entries.push(entry)
+    )
+    for (let id = 1; id <= STICKY_CONNECTION_LIMIT + 3; id++) {
+      observability.recordStickySlot({
+        queueWaitMs: 0,
+        poolWaitMs: 0,
+        sqlMs: 1,
+        statements: 1,
+        statementMsByConnection: new Map([[id, [1]]])
+      })
+    }
+    observability.flush(counts)
+
+    expect(Object.keys(entries[0]?.stickySqlByConnection as object)).toHaveLength(
+      STICKY_CONNECTION_LIMIT
+    )
+    expect(entries[0]).toMatchObject({ stickySqlConnectionSamplesDroppedDelta: 3 })
+  })
+
   it('sums lock waiters per role and table over the samples taken', () => {
     const entries: Array<Record<string, unknown>> = []
     const observability = new RelayObservability(
@@ -438,6 +508,8 @@ describe('relay observability', () => {
     observability.recordControlClose(1006)
     observability.recordControlClose(1006)
     observability.recordControlClose(4402)
+    observability.recordPostProofClose('relay draining')
+    observability.recordPostProofClose('relay draining')
     observability.recordSpliceClose('host-oversize-frame')
     observability.recordSpliceClose('queue-limit')
     observability.recordClientAcceptAbandoned('activity', 14_250.4)
@@ -448,15 +520,52 @@ describe('relay observability', () => {
 
     expect(entries[0]).toMatchObject({
       controlClosesByCodeDelta: { 1006: 2, 4402: 1 },
+      postProofClosesByReasonDelta: { 'relay draining': 2 },
       spliceClosesByTriggerDelta: { 'host-oversize-frame': 1, 'queue-limit': 1 },
       clientAcceptsAbandonedByStageDelta: { activity: 2, credential: 1 },
       clientAcceptAbandonedMsMax: 14_250.4
     })
     expect(entries[1]).toMatchObject({
       controlClosesByCodeDelta: {},
+      postProofClosesByReasonDelta: {},
       spliceClosesByTriggerDelta: {},
       clientAcceptsAbandonedByStageDelta: {},
       clientAcceptAbandonedMsMax: 0
+    })
+  })
+
+  it('counts the phone path, phone refusals by code and the step-6 failures per window', () => {
+    const entries: Array<Record<string, unknown>> = []
+    const observability = new RelayObservability(
+      { role: 'cell', cellId: 'production-gce-c28', region: 'asia-east2' },
+      (entry) => entries.push(entry)
+    )
+    const stageMs = { assignment: 0, credential: 170, activity: 0, attach: 300, basis: 0 }
+    observability.recordClientAcceptCompleted({ totalMs: 470, stageMs, phonePath: 'memory' })
+    observability.recordClientAcceptCompleted({ totalMs: 3_600, stageMs, phonePath: 'db' })
+    observability.recordPhoneRejection(4401)
+    observability.recordPhoneRejection(4404)
+    observability.recordPhoneRejection(4404)
+    observability.recordPhoneAttachDeadline()
+    observability.recordPhoneAcceptDatabaseError()
+    observability.recordResumeConfirmFailure('reject-revoked')
+    observability.recordResumeRenewalFailure()
+    observability.flush({ ...counts, resumeAuditDropped: 3 })
+    observability.flush(counts)
+    expect(entries[0]).toMatchObject({
+      clientAcceptsByPhonePathDelta: { memory: 1, db: 1 },
+      phoneRejectionsByCodeDelta: { '4401': 1, '4404': 2 },
+      phoneAttachDeadlinesDelta: 1,
+      phoneAcceptDatabaseErrorsDelta: 1,
+      resumeConfirmFailuresByCodeDelta: { 'reject-revoked': 1 },
+      resumeRenewalFailuresDelta: 1,
+      resumeAuditDropped: 3
+    })
+    expect(entries[1]).toMatchObject({
+      phoneRejectionsByCodeDelta: {},
+      phoneAttachDeadlinesDelta: 0,
+      phoneAcceptDatabaseErrorsDelta: 0,
+      resumeConfirmFailuresByCodeDelta: {}
     })
   })
 
@@ -502,6 +611,7 @@ describe('relay observability', () => {
       clientAcceptsAbandonedByStageDelta: {},
       clientAcceptAbandonedMsMax: 0
     })
+    expect(entries[0]).toMatchObject({ clientAcceptsByPhonePathDelta: {} })
     // An empty window publishes counts only: a zero percentile point is
     // indistinguishable from a real zero once Cloud Logging aggregates it.
     expect(entries[1]).toMatchObject({ clientAcceptCompletedDelta: 0, controlRttSamplesDelta: 0 })

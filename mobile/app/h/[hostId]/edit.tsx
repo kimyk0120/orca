@@ -17,7 +17,7 @@ import { colors, radii, spacing, typography } from '../../../src/theme/mobile-th
 import { loadHosts, updateHostNameAndEndpoint } from '../../../src/transport/host-store'
 import { displayHostEndpoint } from '../../../src/transport/host-endpoint'
 import { resolveHostEndpointEdit } from '../../../src/transport/host-endpoint-edit'
-import { usePrimeHosts, useRefreshHostClient } from '../../../src/transport/client-context'
+import { usePrimeHosts, useRefreshHostClient } from '../../../src/transport/host-client-hooks'
 import type { HostProfile } from '../../../src/transport/types'
 import { hostOs } from '../../../src/platform/host-os'
 
@@ -232,8 +232,8 @@ export default function EditHostScreen() {
               }}
             />
             <Text style={styles.hint}>
-              Accepts IP, host:port, or ws:// / wss://. Missing port defaults to the current port
-              (or 6768).
+              Accepts IP, host:port, or ws:// / wss://. A wss:// URL without a port uses 443. Bare
+              addresses keep the current port (or 6768).
             </Text>
 
             {endpointEdit == null ? null : endpointEdit.kind !== 'invalid' ? (

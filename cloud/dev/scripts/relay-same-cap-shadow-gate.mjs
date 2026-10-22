@@ -122,7 +122,7 @@ async function retryingRead(reader, read) {
   return { failed: true, error: String(lastError?.message ?? lastError) }
 }
 
-async function readLogEntries(reader, { filter, projection, limit = ENTRY_LIMIT }) {
+export async function readLogEntries(reader, { filter, projection, limit = ENTRY_LIMIT }) {
   const args = [
     'logging', 'read', filter,
     '--project', reader.projectId,
@@ -154,21 +154,22 @@ async function readTimestampsOverWindow(reader, { filter, window }) {
 
 // Cloud Run's own request counter, aligned per minute server-side: a brownout's tens of thousands
 // of 503s are counted, where a log read of them stops at its entry limit (10-01 c29).
-async function readDirector503PerMinute(reader, { config, span }) {
+async function readDirectorRequestCountSeries(reader, { config, span, filters = [], groupByFields }) {
   const url = new URL(`https://monitoring.googleapis.com/v3/projects/${config.projectId}/timeSeries`)
   url.searchParams.set('filter', [
     'metric.type="run.googleapis.com/request_count"',
     'resource.type="cloud_run_revision"',
     `resource.label."service_name"="${config.directorService}"`,
-    'metric.label."response_code"="503"'
+    ...filters
   ].join(' AND '))
   url.searchParams.set('interval.startTime', span.startedAt.toISOString())
   url.searchParams.set('interval.endTime', span.endedAt.toISOString())
   url.searchParams.set('aggregation.alignmentPeriod', '60s')
   url.searchParams.set('aggregation.perSeriesAligner', 'ALIGN_DELTA')
   url.searchParams.set('aggregation.crossSeriesReducer', 'REDUCE_SUM')
+  if (groupByFields) url.searchParams.set('aggregation.groupByFields', groupByFields)
   url.searchParams.set('pageSize', '1000')
-  const read = await retryingRead(reader, async (timeoutMs) => {
+  return await retryingRead(reader, async (timeoutMs) => {
     const { stdout } = await reader.runGcloud(['auth', 'print-access-token'], { timeoutMs })
     const response = await reader.fetch(url, {
       headers: { authorization: `Bearer ${stdout.trim()}` },
@@ -179,22 +180,49 @@ async function readDirector503PerMinute(reader, { config, span }) {
     if (body.nextPageToken) throw new Error('Cloud Monitoring pagination is incomplete')
     return { timeSeries: body.timeSeries ?? [] }
   })
-  const perMinute = {}
-  for (const series of read.timeSeries ?? []) {
-    for (const point of series.points ?? []) {
-      // A delta point covers the minute that ends at its end time; a minute with no point had none.
-      const minute = minuteKey(Date.parse(point.interval.endTime) - 60_000)
-      perMinute[minute] = (perMinute[minute] ?? 0) + Number(point.value.int64Value ?? 0)
-    }
+}
+
+function addPointsPerMinute(perMinute, series) {
+  for (const point of series.points ?? []) {
+    // A delta point covers the minute that ends at its end time; a minute with no point had none.
+    const minute = minuteKey(Date.parse(point.interval.endTime) - 60_000)
+    perMinute[minute] = (perMinute[minute] ?? 0) + Number(point.value.int64Value ?? 0)
   }
+  return perMinute
+}
+
+export async function readDirector503PerMinute(reader, { config, span }) {
+  const read = await readDirectorRequestCountSeries(reader, {
+    config,
+    span,
+    filters: ['metric.label."response_code"="503"']
+  })
+  const perMinute = {}
+  for (const series of read.timeSeries ?? []) addPointsPerMinute(perMinute, series)
   return { perMinute, failed: read.failed }
+}
+
+// Every response code in one read, so a minute missing from the 503 series can be told apart from
+// one not published yet: the other codes' series carry the same publishing front.
+export async function readDirectorRequestsByCodePerMinute(reader, { config, span }) {
+  const read = await readDirectorRequestCountSeries(reader, {
+    config,
+    span,
+    groupByFields: 'metric.label."response_code"'
+  })
+  const byCode = {}
+  for (const series of read.timeSeries ?? []) {
+    const code = series.metric?.labels?.response_code ?? 'unknown'
+    byCode[code] = addPointsPerMinute(byCode[code] ?? {}, series)
+  }
+  return { byCode, failed: read.failed }
 }
 
 // Cells log through the COS container agent, so the text lives in jsonPayload.message; a
 // textPayload filter matches nothing here and returns zero without saying so.
 const CELL_LOG_SCOPE = 'resource.type="gce_instance" AND logName:"cos_containers"'
 
-const DIRECTOR_DRAIN_FIELDS = [
+export const DIRECTOR_DRAIN_FIELDS = [
   'stickyRejectionsByReasonDelta',
   'placementRejectionsByReasonDelta',
   'drainReturnDeferralsDelta',
@@ -204,10 +232,16 @@ const DIRECTOR_DRAIN_FIELDS = [
 ]
 
 // Five instances at one sample per 30 s is ~100 per 10-min sub-window; this many is truncation.
-const DIRECTOR_METRICS_LIMIT = 1000
+export const DIRECTOR_METRICS_LIMIT = 1000
 
-async function readDirectorDrainReturn(reader, { config, window }) {
-  const projection = `json(timestamp,${DIRECTOR_DRAIN_FIELDS
+export const directorMetricsSample = (entry) => ({
+  timestamp: entry.timestamp,
+  instanceId: entry.labels?.instanceId,
+  ...entry.jsonPayload
+})
+
+export async function readDirectorDrainReturn(reader, { config, window }) {
+  const projection = `json(timestamp,labels.instanceId,${DIRECTOR_DRAIN_FIELDS
     .map((field) => `jsonPayload.${field}`)
     .join(',')})`
   const reads = []
@@ -222,7 +256,7 @@ async function readDirectorDrainReturn(reader, { config, window }) {
     })
     reads.push({
       failed: read.failed,
-      samples: read.entries.map((entry) => ({ timestamp: entry.timestamp, ...entry.jsonPayload })),
+      samples: read.entries.map(directorMetricsSample),
       minSamples: Math.floor(
         (subWindow.endedAt.getTime() - subWindow.startedAt.getTime()) / DIRECTOR_METRICS_INTERVAL_MS
       )
