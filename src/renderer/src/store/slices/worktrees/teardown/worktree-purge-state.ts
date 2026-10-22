@@ -19,6 +19,7 @@ import {
 } from './purged-structured-launch-retirement'
 import { buildWorktreePurgeSurfacePatch } from './worktree-purge-surface-patch'
 import { noticeRemovedUnsavedFiles } from './removed-workspace-unsaved-files'
+import { mergeEditorBufferKeepRequests } from '../../editor/buffers/editor-buffer-kept'
 import { buildHostTwinPurgeState, collectHostTwinPurgeScopes } from './host-twin-worktree-purge'
 import { composeWorktreeHostIdentity } from '../../../../../../shared/worktree/host-qualified-identity'
 
@@ -42,7 +43,15 @@ export function buildWorktreePurgeState(
   const fullTargets = targets.filter((target) => !target.hostId || !twinIds.has(target.id))
   let patch = fullTargets.length > 0 ? buildFullWorktreePurgeState(s, fullTargets) : {}
   for (const [hostId, twinHostIds] of twinScopes) {
-    patch = { ...patch, ...buildHostTwinPurgeState({ ...s, ...patch }, hostId, twinHostIds) }
+    const twinPatch = buildHostTwinPurgeState({ ...s, ...patch }, hostId, twinHostIds)
+    patch = {
+      ...patch,
+      ...twinPatch,
+      editorBufferKeepRequest: mergeEditorBufferKeepRequests(
+        patch.editorBufferKeepRequest,
+        twinPatch.editorBufferKeepRequest
+      )
+    }
   }
   // Why both hosts: a paired runtime's copy writes recency and delete state under either identity.
   const hostKeys = [
@@ -93,7 +102,7 @@ export function buildFullWorktreePurgeState(
   forgetAmbiguousOwnerWarnings(worktreeIdSet)
 
   const doomed = collectWorktreePurgeDoomedIds(s, worktreeIdSet)
-  noticeRemovedUnsavedFiles(s, doomed.removedFileIds)
+  const editorBufferKeepRequest = noticeRemovedUnsavedFiles(s, doomed.removedFileIds)
   for (const tabId of doomed.doomedTabIds) {
     if (s.detachedTerminalByTabId && tabId in s.detachedTerminalByTabId) {
       void window.api?.detachedTerminal?.close(tabId)
@@ -139,6 +148,7 @@ export function buildFullWorktreePurgeState(
   }
 
   return {
+    editorBufferKeepRequest,
     ...removeWorktreeLayout(s, {
       worktreeIds: worktreeIdSet,
       tabIds: doomed.doomedTabIds,
