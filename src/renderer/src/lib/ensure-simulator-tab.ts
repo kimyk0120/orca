@@ -12,6 +12,9 @@ import {
 } from './unified-tab-host-ownership'
 import { isExecutionHostAliasForWorktree } from './worktree-execution-host-alias'
 import { folderWorkspaceToWorktree } from '../../../shared/folder-workspace-worktree'
+import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../shared/layout-owner-switch'
+import { recordOpenedSimulatorTabInLayoutOwner } from './simulator-tab-layout-owner'
+import { selectFolderWorkspaces } from '@/store/workspace-record-selectors'
 
 type EnsureSimulatorTabOptions = {
   targetGroupId?: string
@@ -30,7 +33,7 @@ type ExistingSimulatorTab = {
 function getSimulatorWorktrees(state: ReturnType<typeof useAppStore.getState>, worktreeId: string) {
   return [
     ...(state.allWorktrees?.() ?? []),
-    ...(state.folderWorkspaces ?? []).map(folderWorkspaceToWorktree)
+    ...(selectFolderWorkspaces(state) ?? []).map(folderWorkspaceToWorktree)
   ].filter((worktree) => worktree.id === worktreeId)
 }
 
@@ -135,6 +138,9 @@ export function ensureSimulatorTab(
         activate: true,
         ...(executionHostId ? { executionHostId } : {})
       })
+      if (ORCA_LAYOUT_OWNER_IS_MAIN) {
+        recordOpenedSimulatorTab(tabId)
+      }
       surfaceCreatedSimulatorTab(worktreeId, tabId)
       return tabId
     }
@@ -155,6 +161,9 @@ export function ensureSimulatorTab(
       }
     )
     if (splitTab) {
+      if (ORCA_LAYOUT_OWNER_IS_MAIN) {
+        recordOpenedSimulatorTab(splitTab.id)
+      }
       return splitTab.id
     }
   }
@@ -167,10 +176,22 @@ export function ensureSimulatorTab(
     activate: shouldSurface,
     ...(executionHostId ? { executionHostId } : {})
   })
+  if (ORCA_LAYOUT_OWNER_IS_MAIN) {
+    recordOpenedSimulatorTab(tabId)
+  }
   if (shouldSurface) {
     surfaceCreatedSimulatorTab(worktreeId, tabId)
   }
   return tabId
+}
+
+/** Switch point: main records the simulator tab the window just drew. */
+function recordOpenedSimulatorTab(tabId: string): void {
+  const state = useAppStore.getState()
+  const tab = state.getTab(tabId)
+  if (tab) {
+    recordOpenedSimulatorTabInLayoutOwner(state, tab)
+  }
 }
 
 function surfaceCreatedSimulatorTab(worktreeId: string, tabId: string): void {

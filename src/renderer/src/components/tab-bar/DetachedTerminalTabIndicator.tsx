@@ -1,6 +1,6 @@
 import { PictureInPicture2 } from 'lucide-react'
 
-export type DetachedTerminalTabWindowModel = {
+export type DetachedWindow = {
   isDetached: boolean
   onMove: () => void
   disabled: boolean

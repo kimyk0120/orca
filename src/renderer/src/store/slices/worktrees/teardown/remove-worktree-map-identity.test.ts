@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import type { GitUncommittedEntry } from '../../../../../../shared/git-status-types'
 import type { TerminalLayoutSnapshot } from '../../../../../../shared/terminal-tab-types'
 import type { AppState } from '../../../types'
-import { createTestStore } from '../../worktrees-slice-test-harness'
 import { applyRemoveWorktreeSuccessState } from './remove-worktree-store-cleanup'
 
 const REMOVED_ID = 'repo-1::/repos/one/removed'
@@ -19,8 +18,8 @@ const OTHER_TERMINAL_LAYOUT: TerminalLayoutSnapshot = {
 
 /** Only the maps this test asserts on; the cleanup reads them defensively. */
 function buildState(): AppState {
-  const store = createTestStore()
-  store.setState({
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the cleanup reads only the maps listed here and tolerates the rest being absent.
+  return {
     worktreesByRepo: { 'repo-1': [] },
     tabsByWorktree: { [REMOVED_ID]: [], [SURVIVING_ID]: [] },
     openFiles: [],
@@ -41,9 +40,12 @@ function buildState(): AppState {
     terminalLayoutsByTabId: { 'other-tab': OTHER_TERMINAL_LAYOUT },
     ptyIdsByTabId: {},
     expandedPaneByTabId: {},
-    detachedTerminalByTabId: { 'other-tab': { ptyId: 'pty-other' } }
-  })
-  return store.getState()
+    detachedTerminalByTabId: { 'other-tab': { ptyId: 'pty-other' } },
+    sleepingAgentSessionsByPaneKey: {
+      'other-tab:leaf': { paneKey: 'other-tab:leaf', worktreeId: SURVIVING_ID }
+    },
+    agentLaunchConfigByPaneKey: { 'other-tab:leaf': {} }
+  } as unknown as AppState
 }
 
 function removeWorktree(state: AppState): AppState {
@@ -78,7 +80,9 @@ describe('removeWorktree map identity', () => {
       'terminalLayoutsByTabId',
       'ptyIdsByTabId',
       'expandedPaneByTabId',
-      'detachedTerminalByTabId'
+      'detachedTerminalByTabId',
+      'sleepingAgentSessionsByPaneKey',
+      'agentLaunchConfigByPaneKey'
     ] as const) {
       expect(after[field], field).toBe(before[field])
     }
@@ -108,5 +112,21 @@ describe('removeWorktree map identity', () => {
     expect(after.terminalLayoutsByTabId).toEqual({ 'other-tab': OTHER_TERMINAL_LAYOUT })
     expect(after.detachedTerminalByTabId).toEqual({ 'other-tab': { ptyId: 'pty-2' } })
     expect(after.tabsByWorktree).toEqual({ [SURVIVING_ID]: [] })
+  })
+
+  it('drops sleeping records written for the removed worktree after its terminals stopped (#24784)', () => {
+    const before = buildState()
+    Object.assign(before, {
+      sleepingAgentSessionsByPaneKey: {
+        'late-tab:leaf': { paneKey: 'late-tab:leaf', worktreeId: REMOVED_ID },
+        'other-tab:leaf': { paneKey: 'other-tab:leaf', worktreeId: SURVIVING_ID }
+      },
+      agentLaunchConfigByPaneKey: { 'late-tab:leaf': {}, 'other-tab:leaf': {} }
+    })
+
+    const after = removeWorktree(before)
+
+    expect(Object.keys(after.sleepingAgentSessionsByPaneKey)).toEqual(['other-tab:leaf'])
+    expect(Object.keys(after.agentLaunchConfigByPaneKey)).toEqual(['other-tab:leaf'])
   })
 })

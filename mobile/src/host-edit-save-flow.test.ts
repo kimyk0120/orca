@@ -42,7 +42,7 @@ vi.mock('./transport/host-store', () => ({
   updateHostNameAndEndpoint: dependencies.updateHostNameAndEndpoint
 }))
 
-vi.mock('./transport/client-context', () => ({
+vi.mock('./transport/host-client-hooks', () => ({
   usePrimeHosts: () => dependencies.primeHosts,
   useRefreshHostClient: () => dependencies.refreshHostClient
 }))
@@ -160,6 +160,21 @@ describe('edit host handleSave', () => {
     expect(dependencies.refreshHostClient).toHaveBeenCalledWith('host-1')
     expect(dependencies.back).toHaveBeenCalledTimes(1)
 
+    act(() => renderer.unmount())
+  })
+
+  it('previews and saves the secure default port when switching a LAN host to WSS', async () => {
+    const renderer = await renderEditHostRoute()
+    setFieldValue(renderer, 'Address', 'wss://tunnel.example.com')
+
+    expect(findText(renderer, 'Connects to wss://tunnel.example.com:443')).toBe(true)
+    await pressSave(renderer)
+
+    expect(dependencies.updateHostNameAndEndpoint).toHaveBeenCalledWith('host-1', {
+      endpoint: 'wss://tunnel.example.com:443'
+    })
+    expect(dependencies.refreshHostClient).toHaveBeenCalledWith('host-1')
+    expect(dependencies.back).toHaveBeenCalledTimes(1)
     act(() => renderer.unmount())
   })
 

@@ -9,7 +9,6 @@ import { requestActiveTerminalPaneSplit } from './request-active-terminal-pane-s
 import { SortableTabContextMenu } from './SortableTabContextMenu'
 
 const storeMock = vi.hoisted(() => ({
-  dropUnifiedTab: vi.fn(),
   state: {
     keybindings: {},
     unifiedTabsByWorktree: {},
@@ -94,6 +93,14 @@ vi.mock('./TabSessionSurfaceSwitchMenuItems', () => ({
   )
 }))
 
+// The menu's move goes where the tab bar's does; that move's own path is pinned in
+// tab-move-to-pane-column.test.ts and, through main's frame, tab-moves-drawn-from-frames.test.ts.
+const moveMock = vi.hoisted(() => ({ moveTabToNewPaneColumn: vi.fn(() => true) }))
+vi.mock('./tab-move-to-pane-column', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  moveTabToNewPaneColumn: moveMock.moveTabToNewPaneColumn
+}))
+
 vi.mock('../../store', () => ({
   useAppStore: Object.assign(
     (selector: (state: Record<string, unknown>) => unknown) => selector(storeMock.state),
@@ -171,10 +178,9 @@ function getLastSplitEvent(spy: ReturnType<typeof vi.spyOn>): CustomEvent {
 }
 
 beforeEach(() => {
-  storeMock.dropUnifiedTab.mockReset()
+  moveMock.moveTabToNewPaneColumn.mockClear()
   storeMock.state = {
     keybindings: {},
-    dropUnifiedTab: storeMock.dropUnifiedTab,
     groupsByWorktree: {
       'wt-1': [
         {
@@ -265,17 +271,19 @@ describe('SortableTabContextMenu', () => {
   it('does not expose a native/terminal view switch', () => {
     const { container } = renderMenu()
 
-    expect(container.textContent).not.toContain('Switch to terminal view')
-    expect(container.textContent).not.toContain('Switch to chat view')
+    expect(container.textContent).not.toContain('Continue with Terminal Agent')
+    expect(container.textContent).not.toContain('Continue in Chat UI')
   })
 
   it('shows the terminal-only move action and invokes it', () => {
-    const onMoveToNewWindow = vi.fn()
-    const { container } = renderMenu({ onMoveToNewWindow })
+    const onMove = vi.fn()
+    const { container } = renderMenu({
+      detachedWindow: { isDetached: false, onMove, disabled: false, localOnly: false }
+    })
 
     act(() => getButton(container, 'Move to New Window').click())
 
-    expect(onMoveToNewWindow).toHaveBeenCalledOnce()
+    expect(onMove).toHaveBeenCalledOnce()
   })
 
   it('omits the move action when the caller is not a terminal tab', () => {
@@ -286,9 +294,7 @@ describe('SortableTabContextMenu', () => {
 
   it('disables unsupported remote terminals with the Local only hint', () => {
     const { container } = renderMenu({
-      onMoveToNewWindow: vi.fn(),
-      moveToNewWindowDisabled: true,
-      moveToNewWindowLocalOnly: true
+      detachedWindow: { isDetached: false, onMove: vi.fn(), disabled: true, localOnly: true }
     })
 
     expect(getButton(container, 'Move to New Window').disabled).toBe(true)
@@ -297,9 +303,7 @@ describe('SortableTabContextMenu', () => {
 
   it('disables move to new window for split terminals without Local only hint', () => {
     const { container } = renderMenu({
-      onMoveToNewWindow: vi.fn(),
-      moveToNewWindowDisabled: true,
-      moveToNewWindowLocalOnly: false
+      detachedWindow: { isDetached: false, onMove: vi.fn(), disabled: true, localOnly: false }
     })
 
     expect(getButton(container, 'Move to New Window').disabled).toBe(true)
@@ -309,7 +313,7 @@ describe('SortableTabContextMenu', () => {
   it('hides switching a terminal-view tab into chat view', () => {
     const { container } = renderMenu({ canToggleViewMode: true, onToggleViewMode: vi.fn() })
 
-    expect(container.textContent).not.toContain('Switch to chat view')
+    expect(container.textContent).not.toContain('Continue in Chat UI')
   })
 
   it('keeps the way back for a tab already in chat view, in the chat/CLI move section', () => {
@@ -321,11 +325,11 @@ describe('SortableTabContextMenu', () => {
     })
     const marker = getSurfaceSwitchMarker(container)
 
-    expect(getButton(container, 'Switch to terminal view').compareDocumentPosition(marker)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING
-    )
+    expect(
+      getButton(container, 'Continue with Terminal Agent').compareDocumentPosition(marker)
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
     expect(marker.getAttribute('data-leading-separator')).toBe('false')
-    act(() => getButton(container, 'Switch to terminal view').click())
+    act(() => getButton(container, 'Continue with Terminal Agent').click())
     expect(onToggleViewMode).toHaveBeenCalled()
   })
 
@@ -364,16 +368,16 @@ describe('SortableTabContextMenu', () => {
   })
 
   it('renders split actions and routes directions to the move path', () => {
-    storeMock.dropUnifiedTab.mockReturnValue(true)
     const { container } = renderMenu()
 
     expect(container.textContent).toContain('Move Tab to Split')
     expect(container.textContent).toContain('Split terminal')
 
     act(() => getButton(container, 'Right').click())
-    expect(storeMock.dropUnifiedTab).toHaveBeenCalledWith('tab-1', {
+    expect(moveMock.moveTabToNewPaneColumn).toHaveBeenCalledWith({
+      unifiedTabId: 'tab-1',
       groupId: 'group-1',
-      splitDirection: 'right'
+      direction: 'right'
     })
   })
 
@@ -384,34 +388,14 @@ describe('SortableTabContextMenu', () => {
     expect(container.textContent).not.toContain('Split terminal')
   })
 
-  it('routes the directional close actions to their handlers with the tab id', () => {
+  it('keeps Close Others available without directional close entries', () => {
     const onCloseOthers = vi.fn()
-    const onCloseToRight = vi.fn()
-    const onCloseToLeft = vi.fn()
-    const { container } = renderMenu({
-      onCloseOthers,
-      onCloseToRight,
-      onCloseToLeft
-    })
+    const { container } = renderMenu({ onCloseOthers })
 
     act(() => getButton(container, 'Close Others').click())
     expect(onCloseOthers).toHaveBeenCalledWith('term-1')
-
-    act(() => getButton(container, 'Close Tabs To The Right').click())
-    expect(onCloseToRight).toHaveBeenCalledWith('term-1')
-
-    act(() => getButton(container, 'Close Tabs To The Left').click())
-    expect(onCloseToLeft).toHaveBeenCalledWith('term-1')
-  })
-
-  it('disables directional closes when no tabs exist on that side', () => {
-    const { container } = renderMenu({
-      hasTabsToLeft: false,
-      hasTabsToRight: false
-    })
-
-    expect(getButton(container, 'Close Tabs To The Left').disabled).toBe(true)
-    expect(getButton(container, 'Close Tabs To The Right').disabled).toBe(true)
+    expect(container.textContent).not.toContain('Close All Tabs To The Left')
+    expect(container.textContent).not.toContain('Close All Tabs To The Right')
   })
 
   it('hides move-tab split actions for a single-tab group', () => {
@@ -432,5 +416,14 @@ describe('SortableTabContextMenu', () => {
 
     expect(container.textContent).not.toContain('Move Tab to Split')
     expect(container.textContent).toContain('Split terminal right')
+  })
+
+  it('offers Close split pane only when the group is one of several splits', () => {
+    const onCloseSplitPane = vi.fn()
+    const { container } = renderMenu({ onCloseSplitPane })
+    act(() => getButton(container, 'Close split pane').click())
+    expect(onCloseSplitPane).toHaveBeenCalledOnce()
+
+    expect(renderMenu().container.textContent).not.toContain('Close split pane')
   })
 })

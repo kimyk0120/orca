@@ -138,14 +138,20 @@ describe('createMainWindow', () => {
   })
 
   it('closes all detached terminal windows when the renderer process crashes or reloads', () => {
-    const webContentsHandlers = new Map<string, (...args: any[]) => void>()
+    // Why every handler: several modules listen for did-start-navigation on this webContents.
+    const webContentsHandlers = new Map<string, ((...args: any[]) => void)[]>()
+    const emit = (event: string, ...args: any[]): void => {
+      for (const handler of webContentsHandlers.get(event) ?? []) {
+        handler(...args)
+      }
+    }
     const browserWindowInstance = {
       webContents: {
         id: 1,
         getURL: vi.fn(() => 'file:///opt/orca/renderer/index.html'),
         isLoadingMainFrame: vi.fn(() => false),
         on: vi.fn((event: string, callback: (...args: any[]) => void) =>
-          webContentsHandlers.set(event, callback)
+          webContentsHandlers.set(event, [...(webContentsHandlers.get(event) ?? []), callback])
         ),
         setZoomLevel: vi.fn(),
         setBackgroundThrottling: vi.fn(),
@@ -174,33 +180,23 @@ describe('createMainWindow', () => {
     createMainWindow(null)
     closeAllDetachedTerminalWindowsMock.mockClear()
 
-    webContentsHandlers.get('render-process-gone')?.()
+    emit('render-process-gone')
     expect(closeAllDetachedTerminalWindowsMock).toHaveBeenCalledTimes(1)
 
     // In-place navigation should NOT close detached windows
-    webContentsHandlers.get('did-start-navigation')?.(
-      {},
-      'file:///opt/orca/renderer/index.html#hash',
-      true,
-      true
-    )
+    emit('did-start-navigation', {}, 'file:///opt/orca/renderer/index.html#hash', true, true)
     expect(closeAllDetachedTerminalWindowsMock).toHaveBeenCalledTimes(1)
 
     // Subframe navigation should NOT close detached windows
-    webContentsHandlers.get('did-start-navigation')?.({}, 'https://example.com', false, false)
+    emit('did-start-navigation', {}, 'https://example.com', false, false)
     expect(closeAllDetachedTerminalWindowsMock).toHaveBeenCalledTimes(1)
 
     // Main-frame reload/navigation closes detached windows
-    webContentsHandlers.get('did-start-navigation')?.(
-      {},
-      'file:///opt/orca/renderer/index.html',
-      false,
-      true
-    )
+    emit('did-start-navigation', {}, 'file:///opt/orca/renderer/index.html', false, true)
     expect(closeAllDetachedTerminalWindowsMock).toHaveBeenCalledTimes(2)
 
     // Document load completion should NOT close detached windows (a companion may have opened during load)
-    webContentsHandlers.get('did-finish-load')?.()
+    emit('did-finish-load')
     expect(closeAllDetachedTerminalWindowsMock).toHaveBeenCalledTimes(2)
   })
 

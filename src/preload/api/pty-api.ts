@@ -33,7 +33,6 @@ export type PtyApi = {
     cols: number
     rows: number
     cwd?: string
-    cwdFallback?: 'worktree'
     env?: Record<string, string>
     envToDelete?: string[]
     command?: string
@@ -108,6 +107,8 @@ export type PtyApi = {
   resetInputModes: (id: string) => void
   kill: (id: string, opts?: { keepHistory?: boolean }) => Promise<void>
   ackColdRestore: (id: string) => void
+  /** Hidden-output recovery painted main's snapshot; retires the hidden-delivery drop latch. */
+  ackHiddenOutputRestoreApplied: (id: string, hiddenDropEpisode?: number) => void
   ackData: (id: string, charCount: number, processedChars?: number) => void
   onDeliveryResyncRequest: (callback: (payload: { requestId: number }) => void) => () => void
   respondDeliveryResync: (payload: {
@@ -155,6 +156,12 @@ export type PtyApi = {
   /** A local pane whose daemon lacks the claude function and whose claude runs another account
    *  than the one selected for the pane's runtime; false for any other pane. */
   openedBeforeClaudeAccounts: (
+    id: string,
+    target: { runtime: 'host' } | { runtime: 'wsl'; wslDistro: string }
+  ) => Promise<boolean>
+  /** A local host pane whose Claude may open its diff panel unasked, judged from Claude's saved
+   *  config; false for any other pane. */
+  claudeDiffPanelMayAutoOpen: (
     id: string,
     target: { runtime: 'host' } | { runtime: 'wsl'; wslDistro: string }
   ) => Promise<boolean>

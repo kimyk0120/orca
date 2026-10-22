@@ -24,6 +24,7 @@ import {
 import { registerRendererDocumentNavigation } from './renderer-document-navigation'
 import { createRendererRecoveryReloadWatchdog } from './renderer-recovery-reload-watchdog'
 import { createRendererLaunchFailureBackoff } from './renderer-launch-failure-backoff'
+import { trackRendererLivenessAtDeath } from './renderer-liveness-at-death'
 import { closeAllDetachedTerminalWindows } from './detached-terminal-window'
 
 export type MainWindowFocusLifecycle = {
@@ -248,7 +249,9 @@ export function installMainWindowFocusLifecycle(args: {
       recoveryReloadWatchdog.issue(details, recovery.recentRecoveryCount)
     }, launchRetryDelayMs ?? 250)
   }
+  const rendererLiveness = trackRendererLivenessAtDeath(mainWindow)
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    const liveness = rendererLiveness.takeAtRendererGone()
     rendererProcessGone = true
     // Why: renderer crash resets detachment state; close companion windows so tabs can be recovered cleanly.
     closeAllDetachedTerminalWindows()
@@ -261,7 +264,7 @@ export function installMainWindowFocusLifecycle(args: {
     // Why: macOS reports BrowserWindow teardown as renderer killed/SIGKILL after close — window noise, not a crash.
     if (!isWindowClosing()) {
       // Why: the recorder owns crash classification; filtering here made expected-teardown evidence unreachable.
-      opts?.onRendererProcessGone?.(details, rendererWebContentsId)
+      opts?.onRendererProcessGone?.(details, rendererWebContentsId, liveness)
     }
     if (!isWindowClosing()) {
       console.error('[window] Renderer process gone; close confirmation will be bypassed', details)

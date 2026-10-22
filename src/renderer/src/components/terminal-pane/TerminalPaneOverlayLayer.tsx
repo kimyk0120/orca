@@ -163,6 +163,7 @@ const TerminalPaneOverlayLayer = memo(function TerminalPaneOverlayLayer({
               key={terminalTab.id}
               groupId={assignment?.groupId}
               isVisible
+              dimmed={groups.length > 1 && !isActive}
               onFocusOwningGroup={focusOwningGroup}
             >
               <DetachedTerminalPlaceholder tabId={terminalTab.id} />
@@ -181,6 +182,7 @@ const TerminalPaneOverlayLayer = memo(function TerminalPaneOverlayLayer({
               isWorktreeActive={isWorktreeActive}
               isVisible={isVisible && !isDetached}
               isActive={isActive && !isDetached}
+              dimmed={groups.length > 1 && isVisible && !isDetached && !isActive}
               activityTerminalPortal={isDetached ? null : activityTerminalPortal}
               onFocusOwningGroup={focusOwningGroup}
               consumeSuppressedPtyExit={consumeSuppressedPtyExit}
@@ -190,6 +192,7 @@ const TerminalPaneOverlayLayer = memo(function TerminalPaneOverlayLayer({
               <RetainedPaneHost
                 groupId={assignment?.groupId}
                 isVisible
+                dimmed={groups.length > 1 && !isActive}
                 onFocusOwningGroup={focusOwningGroup}
               >
                 <DetachedTerminalPlaceholder tabId={terminalTab.id} />
