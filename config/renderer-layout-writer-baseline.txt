@@ -53,7 +53,8 @@
 1 src/renderer/src/store/slices/browser/browser-hydration-state.ts
 5 src/renderer/src/store/slices/browser/browser-page-focus-actions.ts
 2 src/renderer/src/store/slices/browser/browser-page-state-actions.ts
-6 src/renderer/src/store/slices/browser/browser-tab-actions.ts
+1 src/renderer/src/store/slices/browser/browser-tab-actions.ts
+5 src/renderer/src/store/slices/browser/browser-tab-open-view.ts # extracted from browser-tab-actions.ts
 4 src/renderer/src/store/slices/browser/browser-tab-focus-actions.ts
 2 src/renderer/src/store/slices/browser/create-browser-slice.ts
 9 src/renderer/src/store/slices/editor/actions/check-run-details-actions.ts
@@ -70,7 +71,7 @@
 26 src/renderer/src/store/slices/editor/actions/open-history-diff.ts
 1 src/renderer/src/store/slices/editor/actions/open-unstaged-diff.ts
 10 src/renderer/src/store/slices/editor/actions/recently-closed-editor-tabs.ts
-4 src/renderer/src/store/slices/editor/actions/rekey-open-files-action.ts
+2 src/renderer/src/store/slices/editor/actions/rekey-open-files-action.ts
 5 src/renderer/src/store/slices/editor/actions/restored-editor-owner-in-place.ts
 10 src/renderer/src/store/slices/editor/actions/restored-editor-owner-transition.ts
 3 src/renderer/src/store/slices/editor/file-ids/hydrated-editor-file-ids.ts

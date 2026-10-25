@@ -1,8 +1,7 @@
-// Layout-owner build: a split of a pane in main's layout is written and started by main, under the
-// caller's proposed pane id; every view, the window's included, attaches to the terminal it starts.
+// Main writes and starts its owned splits under the proposed pane id; every view attaches to that terminal.
 import { OrcaRuntimeWithSplitPtyBackedTerminal } from './terminal-split-surface'
 import type { RuntimeTerminalSplit } from '../../../../shared/runtime-types'
-import { parseExecutionHostId } from '../../../../shared/execution-host'
+import { mainOwnsTabLayout } from './main-owned-tab-layout'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../shared/layout-owner-switch'
 import { recordPtySurface, spawnSurfaceClaimSequence } from '../../pty-recorded-surface-topology'
 import { runtimeSplitPlacement } from '../../runtime-terminal-spawn-placement'
@@ -33,8 +32,7 @@ export type SplitPaneInMainOptions = {
 export abstract class OrcaRuntimeWithSplitPaneInMain extends OrcaRuntimeWithSplitPtyBackedTerminal {
   /** Whether main's layout holds the tab, so main writes and starts its splits. */
   protected ownsTabLayout(worktreeId: string, tabId: string): boolean {
-    const [hostId] = this.getWorkspaceSessionHostIdsForTab(worktreeId, tabId)
-    return Boolean(hostId && parseExecutionHostId(hostId)?.kind !== 'runtime')
+    return mainOwnsTabLayout(this.getWorkspaceSessionHostIdsForTab(worktreeId, tabId))
   }
 
   /** A window split whose start fails before main could start it still shows, with why. */
@@ -137,7 +135,6 @@ export abstract class OrcaRuntimeWithSplitPaneInMain extends OrcaRuntimeWithSpli
       makePaneKey(source.tabId, leafId),
       spawnSurfaceClaimSequence(this.graphSequence)
     )
-    // Phones and session.tabs list the pane without a window's report, as the other splits do.
     this.publishPtyBackedMobileSessionTerminal(workspace.id, createdPty, {
       tabId: source.tabId,
       leafId,

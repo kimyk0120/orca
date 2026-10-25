@@ -253,9 +253,7 @@ export function useTerminalPaneContextMenu({
       worktreeId
     })
 
-  // Why: PaneManager.getPanes() allocates public pane wrappers. Closed menus
-  // do not need pane counts or target identity, so avoid that work on every
-  // render across hundreds of mounted terminal tabs.
+  // Closed menus need neither pane counts nor target identity; avoid wrapper allocation on every retained-tab render.
   const paneCount = open ? (managerRef.current?.getPanes().length ?? 1) : 1
   const menuPaneId = menuPane?.id ?? null
 
