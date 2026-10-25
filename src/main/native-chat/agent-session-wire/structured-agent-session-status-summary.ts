@@ -1,3 +1,4 @@
+import { structuredAgentSessionRuntimePermission } from './structured-agent-session-ran-options'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
 import { normalizeOptionalField } from '../../../shared/agent-status-field-normalization'
@@ -21,6 +22,7 @@ export function structuredAgentSessionStatusSummary({
   record,
   state,
   stopping,
+  starting,
   childWork,
   namingFailure,
   now
@@ -28,13 +30,13 @@ export function structuredAgentSessionStatusSummary({
   sessionId: string
   session: {
     params: { location: AgentSessionRecord['location']; provider: AgentSessionRecord['provider'] }
-    child?: Pick<StructuredAgentSessionProviderChild, 'phase'> | null
+    child?: StructuredAgentSessionProviderChild | null
     restartResume?: AgentSessionStatusSummary['restartResume']
   }
   journal: AgentSessionJournal
   record: AgentSessionRecord | null
   state: StructuredAgentSessionStatusState
-  /** A person's Stop is still ending the work it stopped. */
+  starting?: boolean
   stopping: boolean
   childWork: Pick<AgentSessionStatusSummary, 'children' | 'backgroundTasks'>
   namingFailure: StructuredChatNamingFailure | undefined
@@ -42,8 +44,7 @@ export function structuredAgentSessionStatusSummary({
 }): AgentSessionStatusSummary {
   const projected = state.summary
   const providerSession = structuredAgentSessionProviderSessionMetadata(record)
-  // The journal has no model: the record's acknowledged options are where a mid-session
-  // switch lands, so the row follows whichever is in force.
+  // Acknowledged record options remain authoritative across model switches.
   const model = normalizeOptionalField(record?.options?.model, AGENT_MODEL_MAX_LENGTH)
   const permissionMode = record?.permissionMode
   const launchDirectory = record ? agentSessionPinnedLaunchDirectory(record) : undefined
@@ -51,14 +52,15 @@ export function structuredAgentSessionStatusSummary({
     sessionId,
     workspaceId: session.params.location.workspaceId,
     agent: session.params.provider,
-    ...(session.child
+    ...(session.child || starting
       ? {
           hostExecutionOwned: true as const,
-          hostExecutionPhase: session.child.phase
+          hostExecutionPhase: session.child?.phase ?? 'starting'
         }
       : {}),
     ...(session.restartResume ? { restartResume: { phase: session.restartResume.phase } } : {}),
     ...projected,
+    runtimePermission: structuredAgentSessionRuntimePermission(session.child ?? undefined),
     // Only a working session is still being stopped; any other status already ended that work.
     ...(stopping && projected.status === 'working' ? { stopping: true as const } : {}),
     ...(record?.rewind?.phase === 'prepared' || record?.rewind?.phase === 'provider-succeeded'
@@ -75,7 +77,6 @@ export function structuredAgentSessionStatusSummary({
   }
 }
 
-/** The record's name, and the failure to replace it only while that is still the name. */
 function structuredSummaryConversationNaming(
   record: AgentSessionRecord | null,
   failure: StructuredChatNamingFailure | undefined
@@ -92,7 +93,6 @@ function structuredSummaryConversationNaming(
     : { conversationName: name }
 }
 
-/** A closed chat's retained summary with current record annotations, or null if unchanged. */
 export function renamedStructuredStatusSummary(
   previous: AgentSessionStatusSummary,
   deps: Pick<StructuredAgentSessionStatusFeedDeps, 'getRecord' | 'namingFailure'>,
