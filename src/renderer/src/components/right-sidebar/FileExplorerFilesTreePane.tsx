@@ -41,7 +41,6 @@ type FileExplorerFilesTreePaneProps = {
   wslHostUnavailable?: WslHostUnavailableReason | null
 }
 
-/** Presentational tree pane: every effect it renders from lives in useFileExplorerTreePaneState. */
 export function FileExplorerFilesTreePane({
   activeRepo,
   worktreePath,
@@ -112,9 +111,7 @@ export function FileExplorerFilesTreePane({
     handleOpenInTerminal
   } = nodeCommands
 
-  // Why: the root explorer container must stay mounted for loading, error,
-  // and empty states so it always owns OS file drops; otherwise an empty,
-  // loading or failed tree would have no drop target.
+  // Keep the root mounted in loading/error/empty states so it can always own OS file drops.
   const isEmptyState = visibleRowCount === 0 && !inlineInput
   const isNameFilterLoading = nameFilterSource?.relativePaths === null
   const isRootLoading = !rootCache || (!!displayRootPath && loadingDirPaths.has(displayRootPath))
@@ -126,7 +123,7 @@ export function FileExplorerFilesTreePane({
       : rootError
   const hasError = isEmptyState && !isLoading && treeError !== null
   const showTree = !isEmptyState
-  // Why: Retry cannot succeed while WSL hosts are off; the status offers the switch instead.
+  // Retry cannot succeed while WSL hosts are off; offer the switch instead.
   const wslHostsTurnedOff = hasError && wslHostUnavailable === 'turned-off'
   const emptyMessage =
     hasNameFilter && !nameFilterFiles.loadError
@@ -139,8 +136,7 @@ export function FileExplorerFilesTreePane({
   return (
     <ScrollArea
       className={cn(
-        // Why: Radix ScrollArea.Root hard-sets inline `position: relative`,
-        // defeating `absolute`; size by height so the viewport can overflow.
+        // Radix forces inline position:relative, so size by height to let the viewport overflow.
         'h-full min-h-0',
         explorerView !== 'files' && 'pointer-events-none invisible',
         isRootDragOver &&

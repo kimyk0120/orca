@@ -30,12 +30,7 @@ export function shouldIgnoreFileExplorerKeyTarget(target: EventTarget | null): b
   )
 }
 
-/**
- * Keyboard shortcuts for the file explorer.
- *
- * All shortcuts (bare-key and modifier) only fire when focus is inside
- * the explorer container — they must never intercept the editor or terminal.
- */
+/** Scope all explorer shortcuts to its focused container so editor/terminal input remains untouched. */
 export function useFileExplorerKeys(opts: {
   containerRef: React.RefObject<HTMLDivElement | null>
   rowProjection: FileExplorerRowProjection
@@ -97,9 +92,7 @@ export function useFileExplorerKeys(opts: {
   activeWorktreeIdRef.current = opts.activeWorktreeId
 
   useEffect(() => {
-    // Find the row index whose button is currently focused. Each virtualized
-    // row's wrapper carries data-index; the inline-rename slot is the only
-    // wrapper without a real TreeNode, so it falls back to the row above.
+    // Use virtual-row data-index; inline rename has no TreeNode and falls back to the row above.
     const findFocusedIndex = (): number | null => {
       const el = document.activeElement as HTMLElement | null
       if (!el || !opts.containerRef.current?.contains(el)) {
@@ -162,9 +155,7 @@ export function useFileExplorerKeys(opts: {
         return
       }
 
-      // ── Undo/redo for explorer mutations (only when this panel should own the chord).
-      // Why: require focus inside the explorer shell (includes the scrollbar, not just
-      // the viewport — Radix renders the scrollbar as a sibling of the viewport).
+      // Undo owns the whole shell, including Radix’s scrollbar sibling outside the viewport.
       const inExplorer = focusInExplorer()
       const platform = getShortcutPlatform()
       const wantUndo =
@@ -189,7 +180,6 @@ export function useFileExplorerKeys(opts: {
         return
       }
 
-      // ── Bare-key shortcuts: only when explorer has focus ──
       if (focusInExplorer()) {
         if (
           applyFileExplorerNavigation(
@@ -213,7 +203,6 @@ export function useFileExplorerKeys(opts: {
           return
         }
 
-        // ── Space activates the focused row (open file / toggle folder). ──
         if (e.key === ' ' && !e.shiftKey) {
           const focused = findFocusedIndex()
           const node =
@@ -259,8 +248,6 @@ export function useFileExplorerKeys(opts: {
         }
       }
 
-      // ── Modifier shortcuts: only when focus is inside the explorer ──
-      // Scoped to explorer focus to avoid intercepting editor/terminal shortcuts
       if (!focusInExplorer()) {
         return
       }
@@ -289,7 +276,6 @@ export function useFileExplorerKeys(opts: {
       if (fallbackNodes.length === 0) {
         return
       }
-      // ⌥⇧⌘C (Mac) / Ctrl+Shift+Alt+C (Win) — Copy Relative Path
       if (wantsCopyRelativePath) {
         if (
           canCopyRelativePathNodeRef.current &&
@@ -303,7 +289,6 @@ export function useFileExplorerKeys(opts: {
         )
         return
       }
-      // ⌥⌘C (Mac) / Shift+Alt+C (Win) — Copy Path
       if (wantsCopyPath) {
         e.preventDefault()
         window.api.ui.writeClipboardText(
