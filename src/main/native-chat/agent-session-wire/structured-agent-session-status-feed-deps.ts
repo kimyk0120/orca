@@ -1,4 +1,4 @@
-import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import type { AgentSessionConversationView } from '../../../shared/agent-session-conversation-view'
 import type {
   AgentSessionStatusEvent,
   AgentSessionStatusSummary
@@ -13,10 +13,14 @@ import type { StructuredAgentSessionLogger } from './structured-agent-session-lo
 import type { StructuredAgentSessionChildWorkProducer } from './structured-agent-session-subagent-rows'
 import type { StructuredAgentSessionStatusObserverOptions } from './structured-agent-session-status-observation'
 import type { StructuredAgentSessionStatusSink } from './structured-agent-session-status-ownership'
+import { structuredSummaryConversationNaming } from './structured-agent-session-status-summary'
 
 export type StatusFeedSession = {
   journal: AgentSessionJournal
-  params: { location: AgentSessionRecord['location']; provider: AgentSessionRecord['provider'] }
+  params: {
+    location: AgentSessionConversationView['location']
+    provider: AgentSessionConversationView['provider']
+  }
   child?: Pick<StructuredAgentSessionProviderChild, 'phase' | 'generation' | 'fence'> | null
   lastEndedChild?: Pick<StructuredAgentSessionEndedChild, 'fence' | 'rootGone'>
   operationalRevision?: number
@@ -26,7 +30,8 @@ export type StatusFeedSession = {
 export type StructuredAgentSessionStatusFeedDeps = {
   sessions: ReadonlyMap<string, StatusFeedSession>
   starting?: (sessionId: string) => boolean
-  getRecord: (sessionId: string) => AgentSessionRecord | null
+  getConversation: (sessionId: string) => AgentSessionConversationView | null
+  listConversations?: () => AgentSessionConversationView[]
   /** Absent means no replaced runtime. */
   replacedRuntime?: (sessionId: string) => { fence: number } | undefined
   now: () => number
@@ -59,14 +64,24 @@ export type StatusPublication = {
   firstInputSubmissionKey: string | null
 }
 
-/** Naming snapshots need neither readable journals nor retained status rows. */
+/** Naming activity does not depend on any readable journal or retained summary. */
 export function structuredAgentSessionNamingSnapshot(
-  deps: StructuredAgentSessionStatusFeedDeps
+  deps: StructuredAgentSessionStatusFeedDeps,
+  sessionId?: string
 ): AgentSessionStatusEvent {
+  const record = sessionId === undefined ? null : deps.getConversation(sessionId)
+  const records =
+    sessionId === undefined ? (deps.listConversations?.() ?? []) : record ? [record] : []
+  const conversationNames = records.map((entry) => ({
+    sessionId: entry.sessionId,
+    conversationName: entry.conversationName ?? null,
+    ...structuredSummaryConversationNaming(entry, deps.namingFailure?.(entry.sessionId))
+  }))
   return {
     type: 'snapshot',
     sessions: [],
-    namingActiveSessionIds: deps.namingActiveSessionIds?.() ?? []
+    namingActiveSessionIds: deps.namingActiveSessionIds?.() ?? [],
+    ...(conversationNames.length ? { conversationNames } : {})
   }
 }
 

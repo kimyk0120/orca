@@ -79,7 +79,9 @@ it('loads and refreshes an outside tree root while retaining workspace file iden
     result.current.resetAndLoad()
   })
 
-  expect(read).toHaveBeenCalledWith('wt', '/repo', '/tmp/reference')
+  expect(read).toHaveBeenCalledWith('wt', '/repo', '/tmp/reference', {
+    wakeWslDistro: undefined
+  })
   expect(result.current.rootCache?.children[0]).toMatchObject({
     path: '/tmp/reference/package.json',
     relativePath: '/tmp/reference/package.json',
@@ -88,7 +90,9 @@ it('loads and refreshes an outside tree root while retaining workspace file iden
   await act(async () => {
     await result.current.refreshTree()
   })
-  expect(read).toHaveBeenLastCalledWith('wt', '/repo', '/tmp/reference')
+  expect(read).toHaveBeenLastCalledWith('wt', '/repo', '/tmp/reference', {
+    wakeWslDistro: undefined
+  })
 })
 
 it('retains workspace-relative depth when the tree starts at a nested sparse root', async () => {

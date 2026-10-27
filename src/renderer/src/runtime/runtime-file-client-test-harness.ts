@@ -118,8 +118,8 @@ export function installRuntimeFileClientEnvironment(): void {
     vi.stubGlobal('window', {
       api: {
         fs: {
-          readFile: fsReadFile,
           readDir: fsReadDir,
+          readFile: fsReadFile,
           readFileChunk: fsReadFileChunk,
           writeFile: fsWriteFile,
           onFsChanged: fsOnChanged,
