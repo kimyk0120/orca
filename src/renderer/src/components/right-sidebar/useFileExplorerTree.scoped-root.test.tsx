@@ -114,6 +114,20 @@ it('keeps refreshed outside children addressed by absolute path so they stay rea
   })
 })
 
+it('refreshes only the expanded folders the displayed outside tree shows', async () => {
+  const expanded = new Set(['/tmp/reference/src', '/repo/src'])
+  const { result } = renderHook(() =>
+    useFileExplorerTree('/tmp/reference', expanded, 'wt', '/repo')
+  )
+
+  await act(async () => {
+    await result.current.refreshTree()
+  })
+
+  const readPaths = read.mock.calls.map((call) => call[2])
+  expect(readPaths).toEqual(['/tmp/reference', '/tmp/reference/src'])
+})
+
 it('retains workspace-relative depth when the tree starts at a nested sparse root', async () => {
   read.mockResolvedValue(listing('index.ts'))
   const { result } = renderHook(() =>

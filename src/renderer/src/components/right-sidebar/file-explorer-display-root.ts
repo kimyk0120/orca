@@ -96,8 +96,9 @@ export function getExplorerRefreshDirs(
   displayRootPath: string,
   expanded: Iterable<string>
 ): { dirPath: string; depth: number }[] {
+  // Why: '' is the root, already read; an expanded folder outside the displayed tree is not on screen.
   return Array.from(expanded)
-    .filter((dirPath) => dirPath !== displayRootPath)
+    .filter((dirPath) => Boolean(getRelativePathInsideRoot(dirPath, displayRootPath)))
     .map((dirPath) => ({
       dirPath,
       depth: getExplorerDirectoryDepth(worktreePath, displayRootPath, dirPath)
