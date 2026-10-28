@@ -3,6 +3,7 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useFileExplorerTree } from './useFileExplorerTree'
 import { getExplorerEffectiveExpanded } from './file-explorer-display-root'
+import { useFileExplorerTreeLoadEffects } from './use-file-explorer-tree-load-effects'
 
 const read = vi.hoisted(() => vi.fn())
 vi.mock('./file-explorer-directory-listing', async (original) => ({
@@ -143,4 +144,50 @@ it('retains workspace-relative depth when the tree starts at a nested sparse roo
     depth: 2
   })
   expect(result.current.sourceWorkspaceId).toBe('wt')
+})
+
+it('drops a failed read of the previous root once the user browses elsewhere', async () => {
+  let failPreviousRoot: (error: Error) => void = () => {}
+  read.mockImplementation(async (_id: string, _workspace: string, path: string) =>
+    path === '/repo'
+      ? new Promise((_resolve, reject) => {
+          failPreviousRoot = reject
+        })
+      : listing('a.ts')
+  )
+  const expanded = new Set<string>()
+  const hook = renderHook(
+    ({ root }) => {
+      const tree = useFileExplorerTree(root, expanded, 'wt', '/repo')
+      useFileExplorerTreeLoadEffects({
+        visibleFilesWorktreePath: root,
+        workspacePath: '/repo',
+        displayRootPath: root,
+        expanded,
+        dirCache: tree.dirCache,
+        loadingDirPaths: tree.loadingDirPaths,
+        rootError: tree.rootError,
+        isDirStale: tree.isDirStale,
+        loadDir: tree.loadDir,
+        refreshTree: tree.refreshTree,
+        resetAndLoad: tree.resetAndLoad,
+        resetSelection: vi.fn(),
+        setNameFilterQuery: vi.fn()
+      })
+      return tree
+    },
+    { initialProps: { root: '/repo' } }
+  )
+  await act(async () => {})
+
+  hook.rerender({ root: '/tmp/reference' })
+  await act(async () => {})
+  await act(async () => {
+    failPreviousRoot(new Error('Host unavailable'))
+  })
+
+  // Browsing elsewhere resets the tree, so the old root's failure cannot mark the new one unreadable.
+  expect(hook.result.current.rootError).toBeNull()
+  expect(Object.keys(hook.result.current.dirCache)).toEqual(['/tmp/reference'])
+  expect(hook.result.current.loadingDirPaths.size).toBe(0)
 })
