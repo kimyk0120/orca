@@ -48,6 +48,7 @@ type TerminalContextMenuProps = {
   menuPoint: { x: number; y: number }
   menuOpenedAtRef: React.RefObject<number>
   canClosePane: boolean
+  closePaneLabel: string
   canExpandPane: boolean
   menuPaneIsExpanded: boolean
   onCopy: () => void
@@ -142,6 +143,7 @@ export default function TerminalContextMenu(props: TerminalContextMenuProps): Re
 function TerminalContextMenuItems({
   onOpenChange,
   canClosePane,
+  closePaneLabel,
   canExpandPane,
   menuPaneIsExpanded,
   onCopy,
@@ -347,10 +349,7 @@ function TerminalContextMenuItems({
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onSelect={onClosePane}>
             <X />
-            {translate(
-              'auto.components.terminal.pane.TerminalContextMenu.8c17d6786d',
-              'Close Pane'
-            )}
+            {closePaneLabel}
             <DropdownMenuShortcut>{shortcuts.close}</DropdownMenuShortcut>
           </DropdownMenuItem>
         </>

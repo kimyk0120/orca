@@ -49,6 +49,8 @@ type ClickedFileLink = FileLinkTarget & {
   pathText: string
   cachedExists: boolean | undefined
   hasOscLink: boolean
+  /** Opens only once the host has found its file. */
+  guess: boolean
 }
 
 // Why: a slow probe from an earlier click must not open its file after a later click.
@@ -63,8 +65,12 @@ export function openFilePathLinkAtBufferPosition(
   const gesture = ++latestClickGesture
   const links = collectFileLinksAtBufferPosition(buffer, position, terminalColumns, deps)
 
-  // Why: a failure names the path the user sees, not a longer joined guess.
-  const shown = shortestPath(links)
+  // Why: only a written path or a confirmed guess takes the click; prose beside a path stays ordinary text.
+  if (!links.some((link) => !link.guess || link.cachedExists === true)) {
+    return false
+  }
+  // Why: a failure names the path the user sees, never a guess.
+  const shown = shortestPath(links.filter((link) => !link.guess))
   const open = (link: ClickedFileLink, verified = link.cachedExists === true): void => {
     const { onOpenFailure } = deps
     // Why: a bare dotted word (`console.log`, `example.com`) is not a claim that a file exists.
@@ -90,19 +96,17 @@ export function openFilePathLinkAtBufferPosition(
       !settled(link) &&
       (!best || link.pathText.length > best.pathText.length)
   )
-  if (toProbe.length === 0 || (!best && toProbe.length === 1)) {
-    // Why the visible path last: a click on a path already known missing still says so.
-    // An OSC 8 hyperlink there is xterm's to open.
-    const knownMissing =
-      shown && !shown.hasOscLink && /[\\/]/.test(shown.pathText) ? shown : undefined
-    const link = best ?? toProbe[0] ?? knownMissing
+  // Why the visible path last: a click on a missing path still says so. An OSC 8 hyperlink there is xterm's to open.
+  const visible = shown && !shown.hasOscLink && /[\\/]/.test(shown.pathText) ? shown : undefined
+  if (toProbe.length === 0 || (!best && toProbe.length === 1 && !toProbe[0].guess)) {
+    const link = best ?? toProbe[0] ?? visible
     if (link) {
       open(link)
     }
     return link !== undefined
   }
 
-  // Wait for hover probes before choosing longer hard-wrap guesses; otherwise a bad join can hide the real path.
+  // Probe before choosing a longer hard-wrap or spaced reading; otherwise a bad join can hide the real path.
   const isLatestOpen = reserveDetectedFilePathOpenTurn()
   const clickedHost = fileHostFingerprint(toProbe[0].fileContext)
   void probeClickedFileLinks(toProbe, deps).then((existing) => {
@@ -114,8 +118,8 @@ export function openFilePathLinkAtBufferPosition(
       return
     }
     const found = longestPath(existing)
-    // Without a verified candidate, let opening the shortest report the real failure instead of guessing absence.
-    const link = found ?? best ?? shortestPath(toProbe)
+    // Without a verified reading, opening the shortest unchecked path reports the real failure.
+    const link = found ?? best ?? shortestPath(toProbe.filter((link) => !link.guess)) ?? visible
     if (link) {
       open(link, link === found || link.cachedExists === true)
     }
@@ -134,30 +138,35 @@ export function captureFilePathLinkAtBufferPosition(
   deps: FileLinkHitTestDeps
 ): (() => Promise<FilePathLinkBufferMatch>) | null {
   const links = collectFileLinksAtBufferPosition(buffer, position, terminalColumns, deps)
-  const settled = (link: ClickedFileLink): boolean => isSettledFileLink(link, deps)
-  const best = longestPath(links.filter(settled))
-  const fallback =
-    best ??
-    shortestPath(links.filter((candidate) => candidate.cachedExists === undefined)) ??
-    (deps.includeCachedMissing
-      ? longestPath(links.filter((candidate) => candidate.cachedExists === false))
-      : undefined)
-  if (!fallback) {
+  if (!links.some((link) => !link.guess || link.cachedExists === true)) {
     return null
   }
-  const toProbe = links.filter(
-    (link, index) =>
-      links.findIndex((other) => other.cacheKey === link.cacheKey) === index &&
+  const settled = (link: ClickedFileLink): boolean => isSettledFileLink(link, deps)
+  const unique = links.filter(
+    (link, index) => links.findIndex((other) => other.cacheKey === link.cacheKey) === index
+  )
+  const best = longestPath(unique.filter(settled))
+  const toProbe = unique.filter(
+    (link) =>
       link.cachedExists === undefined &&
       !settled(link) &&
       (!best || link.pathText.length > best.pathText.length)
   )
+  const fallback =
+    best ??
+    shortestPath(toProbe.filter((link) => !link.guess)) ??
+    (deps.includeCachedMissing
+      ? longestPath(links.filter((link) => !link.guess && link.cachedExists === false))
+      : undefined)
+  if (!fallback) {
+    return null
+  }
   const toMatch = (link: ClickedFileLink): FilePathLinkBufferMatch => ({
     absolutePath: link.absolutePath,
     line: link.line,
     column: link.column
   })
-  if (toProbe.length === 0 || (!best && toProbe.length === 1)) {
+  if (toProbe.length === 0 || (!best && toProbe.length === 1 && !toProbe[0].guess)) {
     return () => Promise.resolve(toMatch(fallback))
   }
   return async () => toMatch(longestPath(await probeClickedFileLinks(toProbe, deps)) ?? fallback)
@@ -169,25 +178,30 @@ function collectFileLinksAtBufferPosition(
   terminalColumns: number,
   deps: FileLinkHitTestDeps
 ): ClickedFileLink[] {
+  const host: FileLinkHost = { ...deps, cwd: deps.startupCwd, homePath: deps.terminalHomePath }
+  const readings = findTerminalFileLinksAtBufferPosition(buffer, position, terminalColumns)
   const links: ClickedFileLink[] = []
-  for (const parsed of findTerminalFileLinksAtBufferPosition(buffer, position, terminalColumns)) {
-    const target = resolveFileLinkTarget(parsed, {
-      cwd: deps.startupCwd,
-      homePath: deps.terminalHomePath,
-      worktreeId: deps.worktreeId,
-      worktreePath: deps.worktreePath,
-      runtimeEnvironmentId: deps.runtimeEnvironmentId,
-      wslDistro: deps.wslDistro
-    })
-    if (!target) {
+  for (const [parsed, guess] of [
+    ...readings.links.map((link) => [link, false] as const),
+    ...readings.guesses.map((link) => [link, true] as const)
+  ]) {
+    const target = resolveFileLinkTarget(parsed, host)
+    const cachedExists =
+      target && deps.pathExistsCache
+        ? readTerminalPathExistence(deps.pathExistsCache, target.cacheKey)
+        : undefined
+    // Why: a guess the host may not be asked about (an external share) can never be confirmed.
+    if (
+      !target ||
+      (guess && cachedExists !== true && !mayCheckFileLinkTargetUnprompted(target, host))
+    ) {
       continue
     }
     links.push({
       ...target,
       pathText: parsed.pathText,
-      cachedExists: deps.pathExistsCache
-        ? readTerminalPathExistence(deps.pathExistsCache, target.cacheKey)
-        : undefined,
+      cachedExists,
+      guess,
       hasOscLink: terminalLogicalLinkHasOscLink(
         buffer,
         parsed.logicalLine,
@@ -199,7 +213,7 @@ function collectFileLinksAtBufferPosition(
   return links
 }
 
-// Never stat external shares unprompted; open the guess as-is and let the host resolve it.
+// Never stat external shares unprompted; open the path as written and let the host resolve it.
 function isSettledFileLink(link: ClickedFileLink, deps: FileLinkHitTestDeps): boolean {
   const host: FileLinkHost = { ...deps, cwd: deps.startupCwd, homePath: deps.terminalHomePath }
   return (

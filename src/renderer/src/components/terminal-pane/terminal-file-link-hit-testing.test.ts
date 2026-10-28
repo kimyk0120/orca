@@ -70,10 +70,7 @@ describe('terminal file link hit testing', () => {
   })
 
   it('opens the same preferred match returned by the finder', async () => {
-    const pathExistsCache = makeExistsCache([
-      ['active\0/repo/My Folder', true],
-      ['active\0/repo/My', true]
-    ])
+    const pathExistsCache = makeExistsCache([['active\0/repo/My Folder/file.ts', true]])
     const buffer = makeBuffer([makeBufferLine('/repo/My Folder/file.ts')])
     const position = { x: 10, y: 1 }
     const finderMatch = await captureFilePathLinkAtBufferPosition(buffer, position, 80, {
@@ -81,6 +78,7 @@ describe('terminal file link hit testing', () => {
       pathExistsCache
     })?.()
 
+    expect(finderMatch?.absolutePath).toBe('/repo/My Folder/file.ts')
     expect(
       openFilePathLinkAtBufferPosition(buffer, position, 80, {
         ...deps,
