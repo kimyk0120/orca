@@ -90,6 +90,20 @@ export function getExplorerDirectoryDepth(
   return relativePath ? splitPathSegments(relativePath).length - 1 : -1
 }
 
+/** Expanded folders a refresh reads after the displayed root, each with the depth it lists at. */
+export function getExplorerRefreshDirs(
+  worktreePath: string | null,
+  displayRootPath: string,
+  expanded: Iterable<string>
+): { dirPath: string; depth: number }[] {
+  return Array.from(expanded)
+    .filter((dirPath) => dirPath !== displayRootPath)
+    .map((dirPath) => ({
+      dirPath,
+      depth: getExplorerDirectoryDepth(worktreePath, displayRootPath, dirPath)
+    }))
+}
+
 export function isExplorerRootOutsideWorkspace(
   worktreePath: string | null,
   displayRootPath: string | null

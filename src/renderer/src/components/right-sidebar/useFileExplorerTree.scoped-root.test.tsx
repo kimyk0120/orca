@@ -91,6 +91,8 @@ it('loads and refreshes an outside tree root while retaining workspace file iden
     await result.current.refreshTree()
   })
   expect(read).toHaveBeenLastCalledWith('wt', '/repo', '/tmp/reference', {
+    paged: undefined,
+    minEntries: 1,
     wakeWslDistro: undefined
   })
 })
