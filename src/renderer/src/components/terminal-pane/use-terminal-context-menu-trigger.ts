@@ -77,6 +77,8 @@ export function useTerminalContextMenuTrigger({
         ? (manager.getPanes().find((pane) => pane.id === clickedPaneId) ?? null)
         : null
     contextPaneIdRef.current = clickedPane?.id ?? null
+    // Why: a paste gesture opens no menu, so an earlier menu's file must not reach a later Reveal.
+    contextMenuFilePathRef.current = null
 
     // Configured right-click copies selection or pastes; Ctrl+right-click preserves menu access.
     if (rightClickToPaste && !event.ctrlKey) {

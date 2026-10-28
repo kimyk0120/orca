@@ -97,5 +97,10 @@ describe('useTerminalContextMenuTrigger reveal target capture', () => {
     })
     expect(resolver).toHaveBeenCalledTimes(1)
     expect(result.result.current.contextMenuFilePathRef.current).toBe(capturedFilePath)
+
+    act(() => {
+      result.result.current.onContextMenuCapture(createContextMenuEvent(bounds, target))
+    })
+    expect(result.result.current.contextMenuFilePathRef.current).toBeNull()
   })
 })
