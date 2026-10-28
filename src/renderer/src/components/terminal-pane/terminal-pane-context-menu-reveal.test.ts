@@ -10,6 +10,8 @@ vi.mock('@/lib/reveal-in-file-manager', () => ({
   revealInFileManager: vi.fn()
 }))
 
+const capturedFilePath = (): Promise<string> => Promise.resolve('/repo/src/app.ts')
+
 const baseArgs = {
   capturedFilePath: null,
   fallbackCwd: '/repo',
@@ -32,7 +34,7 @@ describe('revealTerminalPaneContextPath', () => {
   it('reveals the captured file without resolving the pane cwd', async () => {
     await revealTerminalPaneContextPath({
       ...baseArgs,
-      capturedFilePath: '/repo/src/app.ts'
+      capturedFilePath
     })
 
     expect(resolveSplitCwd).not.toHaveBeenCalled()
@@ -56,7 +58,7 @@ describe('revealTerminalPaneContextPath', () => {
   it('does not resolve or reveal a path for a blocked owner', async () => {
     await revealTerminalPaneContextPath({
       ...baseArgs,
-      capturedFilePath: '/repo/src/app.ts',
+      capturedFilePath,
       revealBlocked: true,
       revealOwner: 'ssh:build'
     })

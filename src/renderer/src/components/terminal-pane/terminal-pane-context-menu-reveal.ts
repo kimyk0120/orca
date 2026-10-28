@@ -9,9 +9,10 @@ import { resolveTerminalHttpLinkSourceOwner } from './terminal-http-link-source-
 import { resolvePaneWslDistro } from './terminal-pane-wsl-distro'
 import type { PtyTransport } from './pty-transport-types'
 import { resolveSplitCwd, type PaneCwdMap } from './resolve-split-cwd'
+import type { TerminalContextMenuFilePath } from './terminal-context-menu-file-link-resolver'
 
 export function buildTerminalPaneContextMenuReveal(args: {
-  contextMenuFilePathRef: React.RefObject<string | null>
+  contextMenuFilePathRef: React.RefObject<TerminalContextMenuFilePath | null>
   fallbackCwd: string
   open: boolean
   paneCwdRef: React.RefObject<PaneCwdMap>
@@ -60,7 +61,7 @@ export function buildTerminalPaneContextMenuReveal(args: {
 }
 
 export async function revealTerminalPaneContextPath(args: {
-  capturedFilePath: string | null
+  capturedFilePath: TerminalContextMenuFilePath | null
   fallbackCwd: string
   paneCwdMap: PaneCwdMap
   paneId: number
@@ -74,14 +75,14 @@ export async function revealTerminalPaneContextPath(args: {
   if (args.revealBlocked) {
     return
   }
-  const path =
-    args.capturedFilePath ??
-    (await resolveSplitCwd({
-      paneCwdMap: args.paneCwdMap,
-      sourcePaneId: args.paneId,
-      sourcePtyId: args.ptyId,
-      fallbackCwd: args.fallbackCwd
-    }))
+  const path = args.capturedFilePath
+    ? await args.capturedFilePath()
+    : await resolveSplitCwd({
+        paneCwdMap: args.paneCwdMap,
+        sourcePaneId: args.paneId,
+        sourcePtyId: args.ptyId,
+        fallbackCwd: args.fallbackCwd
+      })
   const mappedPath = mapTerminalFilePath(
     path,
     args.worktreePath,

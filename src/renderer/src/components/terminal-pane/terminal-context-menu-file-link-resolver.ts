@@ -1,11 +1,14 @@
 import type { LinkHandlerDeps } from './terminal-link-handlers'
-import { findFilePathLinkAtBufferPosition } from './terminal-file-link-hit-testing'
+import { captureFilePathLinkAtBufferPosition } from './terminal-file-link-hit-testing'
 import { getTerminalBufferPositionForMouseEvent } from './terminal-mouse-buffer-position'
+
+/** Names the right-clicked file once Reveal runs, after probing competing hard-wrap guesses. */
+export type TerminalContextMenuFilePath = () => Promise<string>
 
 export type TerminalContextMenuFileLinkResolver = (
   paneId: number,
   event: MouseEvent
-) => string | null
+) => TerminalContextMenuFilePath | null
 
 export function createTerminalContextMenuFileLinkResolver(
   deps: LinkHandlerDeps
@@ -21,8 +24,11 @@ export function createTerminalContextMenuFileLinkResolver(
     }
     const runtimeEnvironmentId =
       deps.getRuntimeEnvironmentIdForPane?.(paneId) ?? deps.runtimeEnvironmentId ?? null
-    return (
-      findFilePathLinkAtBufferPosition(pane.terminal.buffer.active, position, pane.terminal.cols, {
+    const resolveMatch = captureFilePathLinkAtBufferPosition(
+      pane.terminal.buffer.active,
+      position,
+      pane.terminal.cols,
+      {
         startupCwd: deps.getPaneLinkCwd?.(paneId) ?? deps.startupCwd,
         terminalHomePath: deps.terminalHomePath,
         worktreeId: deps.worktreeId,
@@ -32,7 +38,8 @@ export function createTerminalContextMenuFileLinkResolver(
         terminalHandle: deps.getRuntimeTerminalHandleForPane?.(paneId) ?? null,
         pathExistsCache: deps.pathExistsCache,
         includeCachedMissing: true
-      })?.absolutePath ?? null
+      }
     )
+    return resolveMatch ? async () => (await resolveMatch()).absolutePath : null
   }
 }

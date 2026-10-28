@@ -123,21 +123,44 @@ export function openFilePathLinkAtBufferPosition(
   return true
 }
 
-/** Picks the click target without probing, so a context menu can name it synchronously. */
-export function findFilePathLinkAtBufferPosition(
+/**
+ * Captures the candidates under a context-menu click; the returned resolver probes competing
+ * hard-wrap guesses like a click does, so Reveal does not name an unchecked shorter fragment.
+ */
+export function captureFilePathLinkAtBufferPosition(
   buffer: { getLine(y: number): IBufferLine | undefined },
   position: { x: number; y: number },
   terminalColumns: number,
   deps: FileLinkHitTestDeps
-): FilePathLinkBufferMatch | null {
+): (() => Promise<FilePathLinkBufferMatch>) | null {
   const links = collectFileLinksAtBufferPosition(buffer, position, terminalColumns, deps)
-  const link =
-    longestPath(links.filter((candidate) => isSettledFileLink(candidate, deps))) ??
+  const settled = (link: ClickedFileLink): boolean => isSettledFileLink(link, deps)
+  const best = longestPath(links.filter(settled))
+  const fallback =
+    best ??
     shortestPath(links.filter((candidate) => candidate.cachedExists === undefined)) ??
     (deps.includeCachedMissing
       ? longestPath(links.filter((candidate) => candidate.cachedExists === false))
       : undefined)
-  return link ? { absolutePath: link.absolutePath, line: link.line, column: link.column } : null
+  if (!fallback) {
+    return null
+  }
+  const toProbe = links.filter(
+    (link, index) =>
+      links.findIndex((other) => other.cacheKey === link.cacheKey) === index &&
+      link.cachedExists === undefined &&
+      !settled(link) &&
+      (!best || link.pathText.length > best.pathText.length)
+  )
+  const toMatch = (link: ClickedFileLink): FilePathLinkBufferMatch => ({
+    absolutePath: link.absolutePath,
+    line: link.line,
+    column: link.column
+  })
+  if (toProbe.length === 0 || (!best && toProbe.length === 1)) {
+    return () => Promise.resolve(toMatch(fallback))
+  }
+  return async () => toMatch(longestPath(await probeClickedFileLinks(toProbe, deps)) ?? fallback)
 }
 
 function collectFileLinksAtBufferPosition(

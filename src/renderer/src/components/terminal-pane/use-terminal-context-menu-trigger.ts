@@ -7,7 +7,10 @@ import {
   claimTerminalRightClickPasteMouseDown,
   isTerminalRightClickPasteGesture
 } from './terminal-right-click-paste-gesture'
-import type { TerminalContextMenuFileLinkResolver } from './terminal-context-menu-file-link-resolver'
+import type {
+  TerminalContextMenuFileLinkResolver,
+  TerminalContextMenuFilePath
+} from './terminal-context-menu-file-link-resolver'
 
 type UseTerminalContextMenuTriggerDeps = {
   managerRef: React.RefObject<PaneManager | null>
@@ -25,7 +28,7 @@ type TerminalContextMenuTrigger = {
   setOpen: React.Dispatch<React.SetStateAction<boolean>>
   point: { x: number; y: number }
   menuOpenedAtRef: React.RefObject<number>
-  contextMenuFilePathRef: React.RefObject<string | null>
+  contextMenuFilePathRef: React.RefObject<TerminalContextMenuFilePath | null>
   onContextMenuCapture: (event: React.MouseEvent<HTMLDivElement>) => void
   onMouseDownCapture: (event: React.MouseEvent<HTMLDivElement>) => void
   onPaneTitleContextMenu: (event: React.MouseEvent<HTMLElement>, paneId: number) => void
@@ -40,7 +43,7 @@ export function useTerminalContextMenuTrigger({
   pasteResolvedPane
 }: UseTerminalContextMenuTriggerDeps): TerminalContextMenuTrigger {
   const menuOpenedAtRef = useRef(0)
-  const contextMenuFilePathRef = useRef<string | null>(null)
+  const contextMenuFilePathRef = useRef<TerminalContextMenuFilePath | null>(null)
   const [open, setOpen] = useState(false)
   const [point, setPoint] = useState({ x: 0, y: 0 })
 

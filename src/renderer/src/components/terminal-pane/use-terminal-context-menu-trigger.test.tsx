@@ -34,6 +34,8 @@ function createManager(container: HTMLDivElement): PaneManager {
   return { getPanes: () => [pane] } as unknown as PaneManager
 }
 
+const capturedFilePath = (): Promise<string> => Promise.resolve('/repo/src/app.ts')
+
 describe('useTerminalContextMenuTrigger reveal target capture', () => {
   it('clears a previous terminal file when the next menu opens from a pane title', () => {
     const bounds = document.createElement('div')
@@ -42,7 +44,7 @@ describe('useTerminalContextMenuTrigger reveal target capture', () => {
     paneContainer.append(target)
     bounds.append(paneContainer)
     const manager = createManager(paneContainer)
-    const resolver = vi.fn(() => '/repo/src/app.ts')
+    const resolver = vi.fn(() => capturedFilePath)
     const result = renderHook(() =>
       useTerminalContextMenuTrigger({
         managerRef: { current: manager },
@@ -57,7 +59,7 @@ describe('useTerminalContextMenuTrigger reveal target capture', () => {
     act(() => {
       result.result.current.onContextMenuCapture(createContextMenuEvent(bounds, target))
     })
-    expect(result.result.current.contextMenuFilePathRef.current).toBe('/repo/src/app.ts')
+    expect(result.result.current.contextMenuFilePathRef.current).toBe(capturedFilePath)
     expect(resolver).toHaveBeenCalledWith(7, expect.any(MouseEvent))
 
     act(() => {
@@ -73,7 +75,7 @@ describe('useTerminalContextMenuTrigger reveal target capture', () => {
     const target = document.createTextNode('terminal')
     paneContainer.append(target)
     bounds.append(paneContainer)
-    const resolver = vi.fn(() => '/repo/src/app.ts')
+    const resolver = vi.fn(() => capturedFilePath)
     const result = renderHook(() =>
       useTerminalContextMenuTrigger({
         managerRef: { current: createManager(paneContainer) },
@@ -94,6 +96,6 @@ describe('useTerminalContextMenuTrigger reveal target capture', () => {
       result.result.current.onContextMenuCapture(createContextMenuEvent(bounds, target, true))
     })
     expect(resolver).toHaveBeenCalledTimes(1)
-    expect(result.result.current.contextMenuFilePathRef.current).toBe('/repo/src/app.ts')
+    expect(result.result.current.contextMenuFilePathRef.current).toBe(capturedFilePath)
   })
 })
