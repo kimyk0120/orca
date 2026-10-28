@@ -1,5 +1,5 @@
 import { structuredAgentSessionRuntimePermission } from './structured-agent-session-ran-options'
-import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import type { AgentSessionConversationView } from '../../../shared/agent-session-conversation-view'
 import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
 import { normalizeOptionalField } from '../../../shared/agent-status-field-normalization'
 import { AGENT_MODEL_MAX_LENGTH } from '../../../shared/agent-status-types'
@@ -12,7 +12,10 @@ import type {
 import { structuredAgentSessionProviderSessionMetadata } from './structured-agent-session-history-result'
 import { agentSessionPinnedLaunchDirectory } from '../../runtime/agent-session-record-launch-directory'
 import { isAgentChatPermissionMode } from '../../../shared/agent-chat-permission-mode'
-import type { StructuredAgentSessionStatusFeedDeps } from './structured-agent-session-status-feed-deps'
+import type {
+  StructuredAgentSessionStatusFeedDeps,
+  StatusPublication
+} from './structured-agent-session-status-feed-deps'
 import { structuredStatusSummariesEqual } from './structured-agent-session-status-summary-equality'
 
 export function structuredAgentSessionStatusSummary({
@@ -29,12 +32,15 @@ export function structuredAgentSessionStatusSummary({
 }: {
   sessionId: string
   session: {
-    params: { location: AgentSessionRecord['location']; provider: AgentSessionRecord['provider'] }
+    params: {
+      location: AgentSessionConversationView['location']
+      provider: AgentSessionConversationView['provider']
+    }
     child?: StructuredAgentSessionProviderChild | null
     restartResume?: AgentSessionStatusSummary['restartResume']
   }
   journal: AgentSessionJournal
-  record: AgentSessionRecord | null
+  record: AgentSessionConversationView | null
   state: StructuredAgentSessionStatusState
   starting?: boolean
   stopping: boolean
@@ -77,8 +83,9 @@ export function structuredAgentSessionStatusSummary({
   }
 }
 
-function structuredSummaryConversationNaming(
-  record: AgentSessionRecord | null,
+/** The record's name, and the failure to replace it only while that is still the name. */
+export function structuredSummaryConversationNaming(
+  record: AgentSessionConversationView | null,
   failure: StructuredChatNamingFailure | undefined
 ): Pick<AgentSessionStatusSummary, 'conversationName' | 'namingError'> {
   const name = record?.conversationName
@@ -95,10 +102,10 @@ function structuredSummaryConversationNaming(
 
 export function renamedStructuredStatusSummary(
   previous: AgentSessionStatusSummary,
-  deps: Pick<StructuredAgentSessionStatusFeedDeps, 'getRecord' | 'namingFailure'>,
+  deps: Pick<StructuredAgentSessionStatusFeedDeps, 'getConversation' | 'namingFailure'>,
   sessionId: string
 ): AgentSessionStatusSummary | null {
-  const record = deps.getRecord(sessionId)
+  const record = deps.getConversation(sessionId)
   const { conversationName: _name, namingError: _error, sleptAt: _sleptAt, ...rest } = previous
   const summary = {
     ...rest,
@@ -106,4 +113,13 @@ export function renamedStructuredStatusSummary(
     ...(typeof record?.sleptAt === 'number' ? { sleptAt: record.sleptAt } : {})
   }
   return structuredStatusSummariesEqual(previous, summary) ? null : summary
+}
+
+export function retainedStructuredStatusSummaries(
+  publications: Iterable<StatusPublication>,
+  deps: StructuredAgentSessionStatusFeedDeps
+): AgentSessionStatusSummary[] {
+  return [...publications].map(
+    ({ summary }) => renamedStructuredStatusSummary(summary, deps, summary.sessionId) ?? summary
+  )
 }

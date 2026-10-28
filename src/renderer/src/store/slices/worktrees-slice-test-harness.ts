@@ -154,7 +154,8 @@ export function createTestStore() {
           ]
         ]),
         repos: [],
-        projectHostSetups: [],
+        endpointProjects: [],
+        endpointProjectHostSetups: [],
         deleteProjectHostSetup: vi.fn().mockResolvedValue(null),
         updateFolderWorkspace: vi.fn().mockResolvedValue(true),
         updateSettings: vi.fn().mockResolvedValue(undefined),

@@ -60,7 +60,6 @@ const {
   registerOnboardingHandlersMock,
   registerDashboardPopoutHandlersMock,
   registerWorkspaceSpaceWindowHandlersMock,
-  registerDetachedTerminalHandlersMock,
   isDashboardPopoutRendererMock,
   registerTerminalPreviewHandlersMock,
   registerSpeechHandlersMock,
@@ -132,7 +131,6 @@ const {
   registerOnboardingHandlersMock: vi.fn(),
   registerDashboardPopoutHandlersMock: vi.fn(),
   registerWorkspaceSpaceWindowHandlersMock: vi.fn(),
-  registerDetachedTerminalHandlersMock: vi.fn(),
   isDashboardPopoutRendererMock: vi.fn(),
   registerTerminalPreviewHandlersMock: vi.fn(),
   registerSpeechHandlersMock: vi.fn(),
@@ -175,10 +173,6 @@ vi.mock('../dashboard-popout', () => ({
 
 vi.mock('../workspace-space-window', () => ({
   registerWorkspaceSpaceWindowHandlers: registerWorkspaceSpaceWindowHandlersMock
-}))
-
-vi.mock('../detached-terminal', () => ({
-  registerDetachedTerminalHandlers: registerDetachedTerminalHandlersMock
 }))
 
 vi.mock('../../window/dashboard-popout-window', () => ({
@@ -506,7 +500,6 @@ describe('registerCoreHandlers', () => {
     registerExportHandlersMock.mockReset()
     registerDashboardPopoutHandlersMock.mockReset()
     registerWorkspaceSpaceWindowHandlersMock.mockReset()
-    registerDetachedTerminalHandlersMock.mockReset()
     registerTerminalPreviewHandlersMock.mockReset()
     registerSpeechHandlersMock.mockReset()
     registerSkillsHandlersMock.mockReset()
@@ -619,7 +612,6 @@ describe('registerCoreHandlers', () => {
     expect(registerComputerUsePermissionHandlersMock).toHaveBeenCalled()
     expect(registerDashboardPopoutHandlersMock).toHaveBeenCalledWith(store, undefined)
     expect(registerWorkspaceSpaceWindowHandlersMock).toHaveBeenCalledWith(store)
-    expect(registerDetachedTerminalHandlersMock).toHaveBeenCalledOnce()
     expect(registerTerminalPreviewHandlersMock).toHaveBeenCalledWith(runtime)
     expect(registerSettingsHandlersMock).toHaveBeenCalledWith(store, agentAwakeService)
     expect(registerSkillsHandlersMock).toHaveBeenCalledWith(store, runtime)
