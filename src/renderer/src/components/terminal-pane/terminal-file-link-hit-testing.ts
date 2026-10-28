@@ -152,12 +152,13 @@ export function captureFilePathLinkAtBufferPosition(
       !settled(link) &&
       (!best || link.pathText.length > best.pathText.length)
   )
-  const fallback =
-    best ??
-    shortestPath(toProbe.filter((link) => !link.guess)) ??
-    (deps.includeCachedMissing
-      ? longestPath(links.filter((link) => !link.guess && link.cachedExists === false))
-      : undefined)
+  // Why: a path already known missing names the one the user sees, as Cmd/Ctrl+click does.
+  const shown = shortestPath(links.filter((link) => !link.guess))
+  const visible =
+    deps.includeCachedMissing && shown && !shown.hasOscLink && /[\\/]/.test(shown.pathText)
+      ? shown
+      : undefined
+  const fallback = best ?? shortestPath(toProbe.filter((link) => !link.guess)) ?? visible
   if (!fallback) {
     return null
   }

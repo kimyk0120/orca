@@ -57,16 +57,61 @@ describe('terminal file link hit testing', () => {
   it('can retain a detected path known to be missing for reveal error reporting', async () => {
     await expect(
       captureFilePathLinkAtBufferPosition(
-        makeBuffer([makeBufferLine('missing.ts')]),
+        makeBuffer([makeBufferLine('src/missing.ts')]),
+        { x: 6, y: 1 },
+        80,
+        {
+          ...deps,
+          includeCachedMissing: true,
+          pathExistsCache: makeExistsCache([['active\0/repo/src/missing.ts', false]])
+        }
+      )?.()
+    ).resolves.toEqual({ absolutePath: '/repo/src/missing.ts', line: null, column: null })
+  })
+
+  it('leaves a bare dotted word known to be missing to the cwd reveal', () => {
+    expect(
+      captureFilePathLinkAtBufferPosition(
+        makeBuffer([makeBufferLine('console.log')]),
         { x: 4, y: 1 },
         80,
         {
           ...deps,
           includeCachedMissing: true,
-          pathExistsCache: makeExistsCache([['active\0/repo/missing.ts', false]])
+          pathExistsCache: makeExistsCache([['active\0/repo/console.log', false]])
         }
-      )?.()
-    ).resolves.toEqual({ absolutePath: '/repo/missing.ts', line: null, column: null })
+      )
+    ).toBeNull()
+  })
+
+  it('names the visible path when every hard-wrap reading is known missing', async () => {
+    const fragment = 'modules/twowayaudio/ExpoTwoWayAudioLifeCycleListener.kt'
+    const resolve = captureFilePathLinkAtBufferPosition(
+      makeBuffer([
+        makeBufferLine('/repo/packages/expo-two-way-audio/android/src/main/java/expo/'),
+        makeBufferLine(fragment)
+      ]),
+      { x: 5, y: 2 },
+      62,
+      {
+        ...deps,
+        includeCachedMissing: true,
+        pathExistsCache: makeExistsCache([
+          [`active\0/repo/${fragment}`, false],
+          [
+            `active\0/repo/packages/expo-two-way-audio/android/src/main/java/expo/${fragment}`,
+            false
+          ]
+        ])
+      }
+    )
+
+    await expect(resolve?.()).resolves.toEqual({
+      absolutePath: `/repo/${fragment}`,
+      line: null,
+      column: null
+    })
+    expect(fileLinkTargetExists).not.toHaveBeenCalled()
   })
 
   it('opens the same preferred match returned by the finder', async () => {
