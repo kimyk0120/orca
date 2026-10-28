@@ -323,7 +323,7 @@ export async function resolveLocalDirectoryListingPath(
 ): Promise<string> {
   const directoryPath = await resolveLocalRequestPath(targetPath, access, store, 'read-directory')
   const userDirectory = parseLocalFileAccess(access)?.kind === 'user-directory'
-  if (userDirectory && !(await stat(directoryPath)).isDirectory()) {
+  if (userDirectory && !(await stat(windowsFsPath(directoryPath))).isDirectory()) {
     throw new Error(PATH_ACCESS_DENIED_MESSAGE)
   }
   return directoryPath

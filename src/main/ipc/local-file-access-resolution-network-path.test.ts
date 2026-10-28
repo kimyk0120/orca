@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as NodeFs from 'node:fs'
 import type * as NodePath from 'node:path'
 import type { Store } from '../persistence'
@@ -19,7 +19,7 @@ vi.mock('node:fs/promises', () => {
     vi.fn(async (target: unknown) => {
       fsCalls.push(`${name} ${String(target)}`)
       if (name !== 'realpath') {
-        return { isFile: () => true, isDirectory: () => false }
+        return { isFile: () => true, isDirectory: () => String(target).endsWith('\\reference') }
       }
       if (String(target).endsWith('device-dir-link')) {
         return '\\\\?\\UNC\\attacker.example\\share\\dir'
@@ -149,6 +149,26 @@ describe('user directories on a network share', () => {
       expect(fsCalls).toEqual([`realpath ${linkPath}`])
     }
   )
+})
+
+describe('user directories on a WSL drive mount', () => {
+  const originalPlatform = process.platform
+  beforeEach(() => {
+    fsCalls.length = 0
+    Object.defineProperty(process, 'platform', { value: 'win32' })
+  })
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform })
+  })
+
+  it('checks the folder through its drive path because WSL refuses the UNC spelling', async () => {
+    const target = '\\\\wsl.localhost\\Ubuntu\\mnt\\c\\Users\\me\\reference'
+    await expect(
+      resolveLocalDirectoryListingPath(target, { kind: 'user-directory' }, store)
+    ).resolves.toBe(target)
+    expect(fsCalls).toContain('stat C:\\Users\\me\\reference')
+    expect(fsCalls).not.toContain(`stat ${target}`)
+  })
 })
 
 const CHAT_IMAGE = { kind: 'chat-image' } as const
