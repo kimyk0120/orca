@@ -254,7 +254,7 @@ export function useFileExplorerTree(
       }))
     const allDirsCommitted = await refreshFileExplorerExpandedDirs({
       dirs: expandedDirs,
-      worktreePath: treeRootPath,
+      worktreePath,
       dirLoadTracker: dirLoadTrackerRef.current,
       setDirCache,
       updateLoadingDirPaths,

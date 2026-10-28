@@ -95,6 +95,23 @@ it('loads and refreshes an outside tree root while retaining workspace file iden
   })
 })
 
+it('keeps refreshed outside children addressed by absolute path so they stay read-only', async () => {
+  read.mockResolvedValue(listing('a.ts'))
+  const expanded = new Set(['/tmp/reference/src'])
+  const { result } = renderHook(() =>
+    useFileExplorerTree('/tmp/reference', expanded, 'wt', '/repo')
+  )
+
+  await act(async () => {
+    await result.current.refreshTree()
+  })
+
+  expect(result.current.dirCache['/tmp/reference/src'].children[0]).toMatchObject({
+    path: '/tmp/reference/src/a.ts',
+    relativePath: '/tmp/reference/src/a.ts'
+  })
+})
+
 it('retains workspace-relative depth when the tree starts at a nested sparse root', async () => {
   read.mockResolvedValue(listing('index.ts'))
   const { result } = renderHook(() =>
