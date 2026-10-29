@@ -160,6 +160,7 @@ it('drops a failed read of the previous root once the user browses elsewhere', a
     ({ root }) => {
       const tree = useFileExplorerTree(root, expanded, 'wt', '/repo')
       useFileExplorerTreeLoadEffects({
+        workspaceKey: 'wt',
         visibleFilesWorktreePath: root,
         workspacePath: '/repo',
         displayRootPath: root,
