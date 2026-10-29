@@ -19017,7 +19017,8 @@
         "SortableTabContextMenu": {
           "switchToTerminalView": "Continue with Terminal Agent",
           "switchToChatView": "Continue in Chat UI",
-          "moveToNewWindow": "Move to New Window"
+          "moveToNewWindow": "Move to New Window",
+          "showWindow": "Show Window"
         },
         "BrowserTab": {
           "closeOthers": "Close Others",

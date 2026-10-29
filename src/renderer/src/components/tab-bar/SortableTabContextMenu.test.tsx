@@ -286,6 +286,18 @@ describe('SortableTabContextMenu', () => {
     expect(onMove).toHaveBeenCalledOnce()
   })
 
+  it('names the action Show Window once the tab is in its own window', () => {
+    const onMove = vi.fn()
+    const { container } = renderMenu({
+      detachedWindow: { isDetached: true, onMove, disabled: false, localOnly: false }
+    })
+
+    expect(container.textContent).not.toContain('Move to New Window')
+    act(() => getButton(container, 'Show Window').click())
+
+    expect(onMove).toHaveBeenCalledOnce()
+  })
+
   it('omits the move action when the caller is not a terminal tab', () => {
     const { container } = renderMenu()
 

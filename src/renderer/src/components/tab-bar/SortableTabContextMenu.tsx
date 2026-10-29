@@ -196,10 +196,12 @@ export function SortableTabContextMenu({
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={detachedWindow.onMove} disabled={detachedWindow.disabled}>
               <PictureInPicture2 className="size-3.5 shrink-0" />
-              {translate(
-                'components.tab.bar.SortableTabContextMenu.moveToNewWindow',
-                'Move to New Window'
-              )}
+              {detachedWindow.isDetached
+                ? translate('components.tab.bar.SortableTabContextMenu.showWindow', 'Show Window')
+                : translate(
+                    'components.tab.bar.SortableTabContextMenu.moveToNewWindow',
+                    'Move to New Window'
+                  )}
               {detachedWindow.localOnly ? <LocalOnlyMenuHint /> : null}
             </DropdownMenuItem>
           </>
