@@ -162,6 +162,23 @@ describe('registerTerminalPreviewHandlers', () => {
     vi.useRealTimers()
   })
 
+  it('lets only a detached companion replay more than a preview of scrollback', async () => {
+    const runtime = makeRuntime()
+    registerTerminalPreviewHandlers(runtime as never)
+    const connect = handlers.get('terminalPreview:connect')!
+    const opts = { scrollbackRows: 10_000 }
+
+    await connect(eventFor(makeSender(1)), { ptyId: 'p1', opts })
+    isDashboardPopoutRendererMock.mockReturnValue(false)
+    isDetachedTerminalRendererForPtyMock.mockImplementation((_s, ptyId) => ptyId === 'p1')
+    await connect(eventFor(makeSender(2)), { ptyId: 'p1', opts })
+
+    expect(runtime.serializeTerminalBuffer.mock.calls).toEqual([
+      ['p1', { scrollbackRows: 1000 }],
+      ['p1', { scrollbackRows: 10_000 }]
+    ])
+  })
+
   it('subscribes before snapshot acquisition and replays only bytes after its sequence', async () => {
     const runtime = makeRuntime()
     let resolveSnapshot!: (snapshot: {

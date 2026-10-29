@@ -6,6 +6,7 @@ import type {
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { isDashboardPopoutRenderer } from '../window/dashboard-popout-window'
 import { isDetachedTerminalRendererForPty } from '../window/detached-terminal-window'
+import { DESKTOP_TERMINAL_SCROLLBACK_ROWS_MAX } from '../../shared/terminal-scrollback-policy'
 import { isTrustedUIRenderer } from './ui'
 import { abortWhenRendererGone } from './renderer-lifetime-abort'
 import {
@@ -129,9 +130,13 @@ export function registerTerminalPreviewHandlers(runtime: OrcaRuntimeService): vo
       perPty.set(ptyId, subscription)
 
       const requestedRows = args.opts?.scrollbackRows
+      // A companion window is the tab's whole view, so it may replay the pane's full scrollback.
+      const maxScrollbackRows = isDetachedTerminalRendererForPty(event.sender, ptyId)
+        ? DESKTOP_TERMINAL_SCROLLBACK_ROWS_MAX
+        : 1000
       const scrollbackRows =
         typeof requestedRows === 'number' && Number.isFinite(requestedRows)
-          ? Math.max(0, Math.min(1000, Math.floor(requestedRows)))
+          ? Math.max(0, Math.min(maxScrollbackRows, Math.floor(requestedRows)))
           : undefined
       let snapshot: TerminalPreviewSnapshot | null
       let resyncRequired = false

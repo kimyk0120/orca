@@ -6,14 +6,31 @@ import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
 
 const returnToMain = vi.fn()
-const previewProps = vi.hoisted(() => ({ ptyId: '', className: '' }))
+const previewProps = vi.hoisted(() => ({
+  ptyId: '',
+  className: '',
+  scrollbackRows: undefined as number | undefined
+}))
 
 vi.mock('../dashboard-popout/AgentTerminalPreview', () => ({
-  AgentTerminalPreview: ({ ptyId, className }: { ptyId: string; className?: string }) => {
+  AgentTerminalPreview: ({
+    ptyId,
+    className,
+    scrollbackRows
+  }: {
+    ptyId: string
+    className?: string
+    scrollbackRows?: number
+  }) => {
     previewProps.ptyId = ptyId
     previewProps.className = className ?? ''
+    previewProps.scrollbackRows = scrollbackRows
     return <div data-testid="terminal-preview" className={className} />
   }
+}))
+vi.mock('@/store', () => ({
+  useAppStore: (select: (state: { settings: { terminalScrollbackRows: number } }) => unknown) =>
+    select({ settings: { terminalScrollbackRows: 10_000 } })
 }))
 vi.mock('@/i18n/i18n', () => ({
   translate: (_key: string, fallback: string) => fallback
@@ -38,6 +55,8 @@ describe('DetachedTerminalWindow', () => {
 
     expect(previewProps.ptyId).toBe('pty-1')
     expect(previewProps.className).toContain('h-full')
+    // The companion keeps the pane's scrollback instead of a short preview.
+    expect(previewProps.scrollbackRows).toBe(10_000)
     expect(returnToMain).toHaveBeenCalledWith('tab-1')
     act(() => root.unmount())
     vi.unstubAllGlobals()

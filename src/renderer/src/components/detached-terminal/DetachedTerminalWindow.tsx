@@ -2,6 +2,8 @@ import { ArrowDownToLine } from 'lucide-react'
 import { AgentTerminalPreview } from '../dashboard-popout/AgentTerminalPreview'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
+import { useAppStore } from '@/store'
+import { normalizeDesktopTerminalScrollbackRows } from '../../../../shared/terminal-scrollback-policy'
 
 export type DetachedTerminalWindowParams = {
   tabId: string
@@ -27,6 +29,10 @@ export function DetachedTerminalWindow({
   ptyId,
   title
 }: DetachedTerminalWindowParams): React.JSX.Element {
+  // Why: the companion is the tab's whole view, so it keeps as much history as the pane does.
+  const scrollbackRows = useAppStore((state) =>
+    normalizeDesktopTerminalScrollbackRows(state.settings?.terminalScrollbackRows)
+  )
   return (
     <main className="flex h-screen min-h-0 flex-col bg-background">
       <header className="flex h-10 shrink-0 items-center gap-3 border-b border-border px-2">
@@ -43,7 +49,11 @@ export function DetachedTerminalWindow({
           )}
         </Button>
       </header>
-      <AgentTerminalPreview ptyId={ptyId} className="h-full min-h-0 flex-1" />
+      <AgentTerminalPreview
+        ptyId={ptyId}
+        scrollbackRows={scrollbackRows}
+        className="h-full min-h-0 flex-1"
+      />
     </main>
   )
 }
