@@ -121,6 +121,21 @@ describe('sparse explorer projection', () => {
         { label: 'Users', path: 'C:\\Users' },
         { label: 'dev', path: 'C:\\Users\\dev' }
       ]
+    ],
+    [
+      '\\\\server\\share\\docs',
+      [
+        { label: '\\\\server\\share', path: '\\\\server\\share' },
+        { label: 'docs', path: '\\\\server\\share\\docs' }
+      ]
+    ],
+    [
+      '/tmp/a\\b',
+      [
+        { label: '/', path: '/' },
+        { label: 'tmp', path: '/tmp' },
+        { label: 'a\\b', path: '/tmp/a\\b' }
+      ]
     ]
   ])('builds clickable breadcrumb ancestors for %s', (path, expected) => {
     expect(getExplorerBreadcrumbs(path)).toEqual(expected)

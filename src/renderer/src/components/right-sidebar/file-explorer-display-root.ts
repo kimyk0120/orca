@@ -138,7 +138,7 @@ export function getExplorerBreadcrumbs(path: string): ExplorerBreadcrumb[] {
     const drive = normalized.match(/^[A-Za-z]:/)
     if (drive) {
       const root = `${drive[0]}${separator}`
-      return buildBreadcrumbs(root, normalized.slice(root.length), separator)
+      return buildBreadcrumbs(root, normalized.slice(root.length))
     }
     const parts = normalized
       .replace(/^[\\/]+/, '')
@@ -146,19 +146,16 @@ export function getExplorerBreadcrumbs(path: string): ExplorerBreadcrumb[] {
       .filter(Boolean)
     const rootParts = parts.slice(0, 2)
     const root = `${separator}${separator}${rootParts.join(separator)}`
-    return buildBreadcrumbs(root, parts.slice(2).join(separator), separator)
+    return buildBreadcrumbs(root, parts.slice(2).join(separator))
   }
-  return buildBreadcrumbs('/', path.replace(/^\/+/, ''), '/')
+  return buildBreadcrumbs('/', path)
 }
 
-function buildBreadcrumbs(
-  root: string,
-  remainder: string,
-  separator: '/' | '\\'
-): ExplorerBreadcrumb[] {
+function buildBreadcrumbs(root: string, remainder: string): ExplorerBreadcrumb[] {
   const breadcrumbs = [{ label: root, path: root }]
   let current = root
-  for (const segment of remainder.split(separator).filter(Boolean)) {
+  // Why: the root's flavor decides the separators, so a POSIX name may still contain a backslash.
+  for (const segment of splitPathSegments(remainder, root)) {
     current = joinPath(current, segment)
     breadcrumbs.push({ label: segment, path: current })
   }
