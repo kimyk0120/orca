@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react'
 import { ArrowDownToLine } from 'lucide-react'
 import { AgentTerminalPreview } from '../dashboard-popout/AgentTerminalPreview'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
 import { normalizeDesktopTerminalScrollbackRows } from '../../../../shared/terminal-scrollback-policy'
+import type { DashboardCardTerminalInput } from '../../../../shared/dashboard-snapshot'
 
 export type DetachedTerminalWindowParams = {
   tabId: string
@@ -33,6 +35,21 @@ export function DetachedTerminalWindow({
   const scrollbackRows = useAppStore((state) =>
     normalizeDesktopTerminalScrollbackRows(state.settings?.terminalScrollbackRows)
   )
+  // Why: the pane's input facts (ConPTY, agent paste rules) live in the main renderer; undefined until read.
+  const [terminalInput, setTerminalInput] = useState<DashboardCardTerminalInput | null>()
+  useEffect(() => {
+    // Why: a pushed change is newer than the stored facts; undefined means the push is still coming.
+    let pushed = false
+    const unsubscribe = window.api.detachedTerminal.onTerminalInput((next) => {
+      pushed = true
+      setTerminalInput(next)
+    })
+    void window.api.detachedTerminal.getTerminalInput(tabId).then(
+      (initial) => !pushed && initial !== undefined && setTerminalInput(initial),
+      () => !pushed && setTerminalInput(null)
+    )
+    return unsubscribe
+  }, [tabId])
   return (
     <main className="flex h-screen min-h-0 flex-col bg-background">
       <header className="flex h-10 shrink-0 items-center gap-3 border-b border-border px-2">
@@ -49,11 +66,15 @@ export function DetachedTerminalWindow({
           )}
         </Button>
       </header>
-      <AgentTerminalPreview
-        ptyId={ptyId}
-        scrollbackRows={scrollbackRows}
-        className="h-full min-h-0 flex-1"
-      />
+      {/* Mount once the facts are known: xterm reads its ConPTY and kitty options only at mount. */}
+      {terminalInput !== undefined && (
+        <AgentTerminalPreview
+          ptyId={ptyId}
+          terminalInput={terminalInput}
+          scrollbackRows={scrollbackRows}
+          className="h-full min-h-0 flex-1"
+        />
+      )}
     </main>
   )
 }

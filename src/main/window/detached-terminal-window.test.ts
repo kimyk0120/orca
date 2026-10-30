@@ -21,6 +21,7 @@ const { BrowserWindowMock, instances, sendToTrustedUIRendererMock } = vi.hoisted
     webContents = {
       id: created.length + 1,
       isDestroyed: () => this.destroyed,
+      send: vi.fn(),
       on: (event: string, callback: () => void) => {
         this.webContentsHandlers.set(event, callback)
         return this.webContents
@@ -85,8 +86,10 @@ import {
   closeAllDetachedTerminalWindows,
   closeDetachedTerminalWindow,
   createOrFocusDetachedTerminalWindow,
+  getDetachedTerminalInput,
   isDetachedTerminalRenderer,
-  isDetachedTerminalRendererForPty
+  isDetachedTerminalRendererForPty,
+  updateDetachedTerminalInput
 } from './detached-terminal-window'
 
 type FakeWindow = InstanceType<typeof BrowserWindowMock>
@@ -142,6 +145,29 @@ describe('detached terminal windows', () => {
     expect(isDetachedTerminalRenderer(window.webContents)).toBe(true)
     expect(isDetachedTerminalRendererForPty(window.webContents, 'pty-tab-1')).toBe(true)
     expect(isDetachedTerminalRendererForPty(window.webContents, 'pty-other')).toBe(false)
+  })
+
+  it('keeps the latest pane input facts and pushes them to the companion', () => {
+    const window = open('tab-1')
+    const conptyInput = {
+      hostPlatform: 'win32' as const,
+      localWindowsConpty: true,
+      windowsShiftEnterEncoding: 'alt-enter' as const,
+      ctrlEnterCsiU: false,
+      kittyKeyboardAdvertised: false
+    }
+
+    // Undefined tells the companion the main renderer has not sent the facts yet.
+    expect(getDetachedTerminalInput('tab-1')).toBeUndefined()
+    updateDetachedTerminalInput('tab-1', conptyInput)
+    updateDetachedTerminalInput('tab-missing', null)
+
+    expect(getDetachedTerminalInput('tab-1')).toBe(conptyInput)
+    expect(window.webContents.send).toHaveBeenCalledTimes(1)
+    expect(window.webContents.send).toHaveBeenCalledWith(
+      'detachedTerminal:terminalInput',
+      conptyInput
+    )
   })
 
   it('closes every companion when the main window closes', () => {

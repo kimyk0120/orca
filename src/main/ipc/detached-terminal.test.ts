@@ -5,6 +5,8 @@ const {
   ipcMainMock,
   createOrFocusMock,
   closeDetachedMock,
+  getInputMock,
+  updateInputMock,
   isDetachedRendererForTabMock,
   isTrustedUIRendererMock
 } = vi.hoisted(() => {
@@ -17,6 +19,8 @@ const {
     },
     createOrFocusMock: vi.fn(),
     closeDetachedMock: vi.fn(),
+    getInputMock: vi.fn((_tabId: string): unknown => undefined),
+    updateInputMock: vi.fn(),
     isDetachedRendererForTabMock: vi.fn((_sender: unknown, _tabId: string) => false),
     isTrustedUIRendererMock: vi.fn((_sender: unknown) => false)
   }
@@ -26,6 +30,8 @@ vi.mock('electron', () => ({ ipcMain: ipcMainMock }))
 vi.mock('../window/detached-terminal-window', () => ({
   createOrFocusDetachedTerminalWindow: createOrFocusMock,
   closeDetachedTerminalWindow: closeDetachedMock,
+  getDetachedTerminalInput: getInputMock,
+  updateDetachedTerminalInput: updateInputMock,
   isDetachedTerminalRendererForTab: isDetachedRendererForTabMock
 }))
 vi.mock('./ui', () => ({
@@ -149,5 +155,46 @@ describe('detached terminal IPC handlers', () => {
     const returnHandler = handlers.get('detachedTerminal:returnToMain')!
     returnHandler({ sender: untrustedSender }, { tabId: 'tab-1' })
     expect(closeDetachedMock).not.toHaveBeenCalled()
+  })
+
+  const conptyInput = {
+    hostPlatform: 'win32',
+    localWindowsConpty: true,
+    windowsShiftEnterEncoding: 'alt-enter',
+    ctrlEnterCsiU: false,
+    kittyKeyboardAdvertised: false
+  }
+
+  it('forwards the pane input facts from the trusted UI only', () => {
+    const setHandler = handlers.get('detachedTerminal:setTerminalInput')!
+    setHandler({ sender: trustedSender }, { tabId: 'tab-1', terminalInput: conptyInput })
+    setHandler({ sender: trustedSender }, { tabId: 'tab-1', terminalInput: null })
+    setHandler({ sender: untrustedSender }, { tabId: 'tab-1', terminalInput: conptyInput })
+
+    expect(updateInputMock.mock.calls).toEqual([
+      ['tab-1', conptyInput],
+      ['tab-1', null]
+    ])
+  })
+
+  it('refuses malformed input facts instead of coercing them', () => {
+    const setHandler = handlers.get('detachedTerminal:setTerminalInput')!
+    setHandler(
+      { sender: trustedSender },
+      { tabId: 'tab-1', terminalInput: { ...conptyInput, localWindowsConpty: 'yes' } }
+    )
+    expect(updateInputMock).not.toHaveBeenCalled()
+  })
+
+  it('returns the stored input facts only to the tab companion', () => {
+    const getHandler = handlers.get('detachedTerminal:getTerminalInput')!
+    const companionSender = { id: 3 }
+    isDetachedRendererForTabMock.mockImplementation(
+      (sender, tabId) => sender === companionSender && tabId === 'tab-1'
+    )
+    getInputMock.mockReturnValue(conptyInput)
+
+    expect(getHandler({ sender: companionSender }, { tabId: 'tab-1' })).toBe(conptyInput)
+    expect(getHandler({ sender: untrustedSender }, { tabId: 'tab-1' })).toBeUndefined()
   })
 })

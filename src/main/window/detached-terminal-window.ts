@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { sendToTrustedUIRenderer } from '../ipc/ui'
 import { isBackgroundLaunch, showWindowWithoutStealingFocus } from './foreground-activation-policy'
 import { installPrivilegedWindowNavigationPolicy } from './privileged-window-navigation'
+import type { DashboardCardTerminalInput } from '../../shared/dashboard-snapshot'
 
 export type DetachedTerminalWindowArgs = {
   tabId: string
@@ -13,6 +14,8 @@ export type DetachedTerminalWindowArgs = {
 type DetachedTerminalEntry = {
   window: BrowserWindow
   ptyId: string
+  /** The pane's host-input facts, which only the main renderer can resolve; undefined until sent. */
+  terminalInput?: DashboardCardTerminalInput | null
 }
 
 const entriesByTabId = new Map<string, DetachedTerminalEntry>()
@@ -109,6 +112,24 @@ export function createOrFocusDetachedTerminalWindow(
 
   loadDetachedTerminalWindow(window, args)
   return window
+}
+
+export function getDetachedTerminalInput(
+  tabId: string
+): DashboardCardTerminalInput | null | undefined {
+  return entriesByTabId.get(tabId)?.terminalInput
+}
+
+export function updateDetachedTerminalInput(
+  tabId: string,
+  terminalInput: DashboardCardTerminalInput | null
+): void {
+  const entry = entriesByTabId.get(tabId)
+  if (!entry || entry.window.isDestroyed()) {
+    return
+  }
+  entry.terminalInput = terminalInput
+  entry.window.webContents.send('detachedTerminal:terminalInput', terminalInput)
 }
 
 export function closeDetachedTerminalWindow(tabId: string): void {

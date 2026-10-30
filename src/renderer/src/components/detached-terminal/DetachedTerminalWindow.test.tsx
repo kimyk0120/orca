@@ -9,22 +9,26 @@ const returnToMain = vi.fn()
 const previewProps = vi.hoisted(() => ({
   ptyId: '',
   className: '',
-  scrollbackRows: undefined as number | undefined
+  scrollbackRows: undefined as number | undefined,
+  terminalInput: undefined as unknown
 }))
 
 vi.mock('../dashboard-popout/AgentTerminalPreview', () => ({
   AgentTerminalPreview: ({
     ptyId,
     className,
-    scrollbackRows
+    scrollbackRows,
+    terminalInput
   }: {
     ptyId: string
     className?: string
     scrollbackRows?: number
+    terminalInput?: unknown
   }) => {
     previewProps.ptyId = ptyId
     previewProps.className = className ?? ''
     previewProps.scrollbackRows = scrollbackRows
+    previewProps.terminalInput = terminalInput
     return <div data-testid="terminal-preview" className={className} />
   }
 }))
@@ -45,12 +49,35 @@ describe('DetachedTerminalWindow', () => {
     ).toEqual({ tabId: 'tab-1', ptyId: 'pty-1', title: 'Shell' })
   })
 
-  it('attaches the preview by PTY id and can return the tab', () => {
-    vi.stubGlobal('window', { api: { detachedTerminal: { returnToMain } } })
+  it('attaches the preview by PTY id and can return the tab', async () => {
+    const conptyInput = { hostPlatform: 'win32', localWindowsConpty: true }
+    let pushInput: (input: unknown) => void = () => undefined
+    const getTerminalInput = vi.fn(async () => conptyInput)
+    vi.stubGlobal('window', {
+      api: {
+        detachedTerminal: {
+          returnToMain,
+          getTerminalInput,
+          onTerminalInput: (callback: (input: unknown) => void) => {
+            pushInput = callback
+            return () => undefined
+          }
+        }
+      }
+    })
     const container = document.createElement('div')
     const root = createRoot(container)
 
     act(() => root.render(<DetachedTerminalWindow tabId="tab-1" ptyId="pty-1" title="Shell" />))
+    // Why: xterm takes its ConPTY options at mount, so the preview waits for the pane's input facts.
+    expect(container.querySelector('[data-testid="terminal-preview"]')).toBeNull()
+    await act(async () => undefined)
+    expect(getTerminalInput).toHaveBeenCalledWith('tab-1')
+    expect(previewProps.terminalInput).toBe(conptyInput)
+
+    const agentInput = { hostPlatform: 'win32', localWindowsConpty: true, ctrlEnterCsiU: true }
+    act(() => pushInput(agentInput))
+    expect(previewProps.terminalInput).toBe(agentInput)
     act(() => container.querySelector('button')?.click())
 
     expect(previewProps.ptyId).toBe('pty-1')
