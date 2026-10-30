@@ -1,6 +1,6 @@
 import { MAX_DETACHED_TERMINAL_TITLE_LENGTH } from '../../../../shared/detached-terminal-limits'
 import { isRemoteExecutionHostPtyId } from '../../../../shared/remote-execution-host-pty-id'
-import type { TerminalLayoutSnapshot } from '../../../../shared/terminal-tab-types'
+import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/terminal-tab-types'
 import { collectLeafIdsInOrder } from '@/components/terminal-pane/terminal-layout-leaf-ids'
 import type { AppState } from '../types'
 import type { TerminalStoreGet, TerminalStoreSet } from './terminal-state'
@@ -30,10 +30,14 @@ export function resolveTerminalDetachTarget(
   const tab = Object.values(state.tabsByWorktree)
     .flat()
     .find((candidate) => candidate.id === tabId)
-  if (!tab) {
-    return null
-  }
-  const layout = state.terminalLayoutsByTabId[tabId]
+  return tab ? resolveTabDetachTarget(tab, state.terminalLayoutsByTabId[tabId]) : null
+}
+
+/** Reads only the tab and its layout, so a tab-bar row need not scan every worktree's tabs. */
+export function resolveTabDetachTarget(
+  tab: Pick<TerminalTab, 'ptyId' | 'customTitle' | 'title'>,
+  layout: TerminalLayoutSnapshot | undefined
+): TerminalDetachTarget {
   const ptyId = (layout ? resolvePrimaryLayoutPtyId(layout) : null) ?? tab.ptyId
   return {
     ptyId,
