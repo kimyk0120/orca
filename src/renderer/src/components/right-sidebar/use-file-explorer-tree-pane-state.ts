@@ -8,6 +8,7 @@ import type { OpenFile } from '@/store/slices/editor'
 import type { Repo } from '../../../../shared/repo-types'
 import type { FileExplorerRowProjection } from './file-explorer-row-projection'
 import type { TreeNode } from './file-explorer-types'
+import { getExplorerWatchedWorkspacePath } from './file-explorer-display-root'
 import { buildFolderStatusMap, buildStatusMap } from './status-display'
 import { useFileDeletion } from './useFileDeletion'
 import { useFileExplorerDragDrop } from './useFileExplorerDragDrop'
@@ -209,7 +210,7 @@ export function useFileExplorerTreePaneState({
   })
 
   useFileExplorerWatch({
-    worktreePath: readOnly ? null : visibleFilesWorktreePath,
+    worktreePath: getExplorerWatchedWorkspacePath(visibleFilesWorktreePath, displayRootPath),
     activeWorktreeId,
     dirCache,
     setDirCache,

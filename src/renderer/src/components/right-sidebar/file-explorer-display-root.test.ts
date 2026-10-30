@@ -7,6 +7,7 @@ import {
   getExplorerDisplayRootOptions,
   getExplorerDisplayRootPath,
   getExplorerParentPath,
+  getExplorerWatchedWorkspacePath,
   isExplorerRootOutsideWorkspace,
   getExplorerEffectiveExpanded
 } from './file-explorer-display-root'
@@ -156,5 +157,14 @@ describe('sparse explorer projection', () => {
   it('computes every depth from an ancestor display root while browsing above the workspace', () => {
     expect(getExplorerDirectoryDepth('/home/dev/repo', '/home/dev', '/home/dev/repo')).toBe(0)
     expect(getExplorerDirectoryDepth('/home/dev/repo', '/home/dev', '/home/dev/repo/src')).toBe(1)
+  })
+
+  it('keeps watching the workspace while an outside ancestor still shows it', () => {
+    expect(getExplorerWatchedWorkspacePath('/home/dev/repo', '/home/dev/repo/src')).toBe(
+      '/home/dev/repo'
+    )
+    expect(getExplorerWatchedWorkspacePath('/home/dev/repo', '/home/dev')).toBe('/home/dev/repo')
+    expect(getExplorerWatchedWorkspacePath('/home/dev/repo', '/tmp/reference')).toBeNull()
+    expect(getExplorerWatchedWorkspacePath(null, '/home/dev')).toBeNull()
   })
 })

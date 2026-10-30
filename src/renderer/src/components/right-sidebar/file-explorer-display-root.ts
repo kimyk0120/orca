@@ -116,6 +116,19 @@ export function isExplorerRootOutsideWorkspace(
   )
 }
 
+/** The workspace whose file changes reach the tree: an outside ancestor still shows its folders. */
+export function getExplorerWatchedWorkspacePath(
+  worktreePath: string | null,
+  displayRootPath: string | null
+): string | null {
+  return worktreePath &&
+    displayRootPath &&
+    isExplorerRootOutsideWorkspace(worktreePath, displayRootPath) &&
+    getRelativePathInsideRoot(worktreePath, displayRootPath) === null
+    ? null
+    : worktreePath
+}
+
 export type ExplorerBreadcrumb = { label: string; path: string }
 
 export function getExplorerBreadcrumbs(path: string): ExplorerBreadcrumb[] {
