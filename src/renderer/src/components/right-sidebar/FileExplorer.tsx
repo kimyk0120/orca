@@ -302,6 +302,7 @@ function FileExplorerFiles(): React.JSX.Element {
                 query={nameFilterQuery}
                 scopeLabel={rootOptions?.find((option) => option.value === rootChoice)?.label}
                 loading={nameFilterFiles.loading}
+                disabled={outsideWorkspace}
                 onQueryChange={setNameFilterQuery}
                 onClear={handleClearNameFilter}
               />

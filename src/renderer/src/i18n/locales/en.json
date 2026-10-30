@@ -21303,7 +21303,8 @@
       "up": "Up",
       "openFolder": "Open Folder…",
       "outsideWorkspace": "Outside the workspace · read-only",
-      "backToWorkspace": "Back to workspace"
+      "backToWorkspace": "Back to workspace",
+      "findUnavailableOutside": "Find is not available outside the workspace"
     },
     "root": {
       "label": "Explorer root",
